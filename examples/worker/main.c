@@ -23,7 +23,7 @@ foo(struct schedule * S, void *ud) {
 
 void handle_sigint(int sig)
 {
-	// 若解析参数
+	// 解析参数(貌似 signal 无法传递参数)
 	// 加载程序
 
 	// 创建协程

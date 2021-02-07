@@ -24,4 +24,25 @@ coroutine 1 : 104
 no coroutine can be run, finished
 ```
 
-to do: 加入信号的控制，在信号中断中注册一个协程后继续正常执行。
+to do: 加入信号的控制，在信号中断中注册一个协程后继续正常执行。（已经实现）
+
+
+加入信号中断机制，可正常运行，结果如下。第 6 行和第 9 行两次 ctr+c 信号分别开启了两个协程，id 分别为2、3，各个协程正常执行后退出。
+
+```
+$ ./main 
+main start
+coroutine 0 : 0
+coroutine 1 : 100
+coroutine 0 : 1
+^Ccoroutine 1 : 101
+coroutine 2 : 200
+^Ccoroutine 3 : 200
+coroutine 0 : 2
+coroutine 1 : 102
+coroutine 2 : 201
+...
+coroutine 2 : 204
+coroutine 3 : 204
+no coroutine can be run, finished
+```
