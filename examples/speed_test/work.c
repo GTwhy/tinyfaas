@@ -1,14 +1,15 @@
 #include<stdio.h>
 #include<math.h>
-int main()
+void * work(void * s)
 {
 	int i,m,n,x,y,z,flag=0;
 	m = 100;
 	n = 999;
+	printf("str from user %s\n", s);
 	if(m<100||m>n||n>999)
 	{
 		printf("Erroe!\n");
-		return 0;
+		return "error";
 	}
 	for(i=m;i<=n;i++){
 		x=i%10;
@@ -23,5 +24,5 @@ int main()
 	}
 	if(flag==0)
 		printf("No\n");
-	return 0;
+	return s;
 }

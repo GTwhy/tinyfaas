@@ -1,7 +1,6 @@
 #include "coroutine.h"
 #include <stdio.h>
 #include <signal.h>
-
 #include <dlfcn.h>
 
 struct schedule * S;
