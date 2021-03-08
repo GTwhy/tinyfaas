@@ -45,10 +45,9 @@ struct args {
 };
 
 static void
-foo(struct schedule * S, void *ud) {
+func_wrapper(struct schedule * S, void *ud) {
 	struct args * arg = ud;
 	void * rv = arg->func(arg->param);
-	printf("rv: %s\n", rv);
 	//TODO:add operations for return value
 }
 
@@ -59,7 +58,7 @@ void handle_sigint(int sig)
 
 	// 创建协程
 //	struct args arg3 = { 200 };
-//	coroutine_new(S, foo, &arg3);
+//	coroutine_new(S, func_wrapper, &arg3);
 
 }
 
@@ -73,7 +72,7 @@ void handle_sigint(int sig)
 static int do_work(func_ptr_t fp, void * param)
 {
 	struct args arg = {fp, param};
-	coroutine_new(S, foo, &arg);
+	coroutine_new(S, func_wrapper, &arg);
 	//TODO:调度可优化，考虑是否每次新加入任务都需要调度
 	coroutine_sched(S);
 }

@@ -10,7 +10,7 @@ struct args {
 	int n;
 };
 
-static void foo(struct schedule * S, void *ud) {
+static void func_wrapper(struct schedule * S, void *ud) {
 	struct args * arg = ud;
 	int start = arg->n;
 	int i;
@@ -38,7 +38,7 @@ void signal_handler(int sig)
 	}
 	// 创建协程
 	struct args arg3 = { 200 };
-	coroutine_new(S, foo, &arg3);
+	coroutine_new(S, func_wrapper, &arg3);
 }
 
 
@@ -60,8 +60,8 @@ int coroutine_init() {
 	struct args arg1 = { 0 };
 	struct args arg2 = { 100 };
 
-	coroutine_new(S, foo, &arg1);
-	coroutine_new(S, foo, &arg2);
+	coroutine_new(S, func_wrapper, &arg1);
+	coroutine_new(S, func_wrapper, &arg2);
 	
 	printf("main start\n");
 	coroutine_sched(S);

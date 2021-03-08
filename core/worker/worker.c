@@ -17,10 +17,6 @@
 
 
 
-
-
-
-
 int main(int argc, char **argv)
 {
 	//TODO:思考需要初始化的参数并初始化
