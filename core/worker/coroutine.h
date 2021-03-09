@@ -9,8 +9,7 @@
 struct schedule;
 
 // 协程函数指针
-//TODO:返回值不能是空，应该是void*，与参数一致。由此导致的改变后续考虑。
-typedef void (*coroutine_func)(struct schedule *, void *ud);
+typedef void (*coroutine_func)(struct schedule *S, void *ud);
 
 struct schedule * coroutine_open(void);
 void coroutine_close(struct schedule *);

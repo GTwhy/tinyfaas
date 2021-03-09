@@ -5,14 +5,15 @@
 #ifndef LUTF_FUNC_SERVER_H
 #define LUTF_FUNC_SERVER_H
 #include <stdint.h>
-
+#include <stdio.h>
+#include <stdlib.h>
 #ifndef FUNCNUM
 #define FUNCNUM 128
 #endif
 
 #define APPNUM 8
 
-typedef void * (*func_ptr_t)(void *);
+typedef int (*func_ptr_t)(void * param, void * md);
 func_ptr_t func_ptrs[APPNUM][FUNCNUM];
 int start_func_listener(const char *url);
 

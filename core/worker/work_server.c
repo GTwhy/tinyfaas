@@ -19,16 +19,24 @@
 #define WORK_PARALLEL 128
 #endif
 
+#define SLEEP_TIME 1
+
 /**
  * 异步工作请求
  */
-struct work {
-	enum {INIT, RECV, WORK, SEND} state;
+struct work_task {
+	enum {INIT, RECV, WORK, DONE, SEND} state;
 	nng_aio *aio;
 	nng_ctx ctx;
 	nng_msg *msg;
 	func_ptr_t fp;
+	void * param;
+	mate_date_s md;
 };
+
+/*
+ * Mate_date related to the return value of function.
+ */
 
 static void fatal(const char *func, int rv)
 {
@@ -39,16 +47,11 @@ static void fatal(const char *func, int rv)
 
 struct schedule * S;
 
-struct args {
-	func_ptr_t func;
-	void *param;
-};
-
 static void
-func_wrapper(struct schedule * S, void *ud) {
-	struct args * arg = ud;
-	void * rv = arg->func(arg->param);
-	//TODO:add operations for return value
+func_wrapper(struct schedule *S, void * ud) {
+	struct work_task * wt_p = ud;
+	wt_p->fp(wt_p->param, &wt_p->md);
+	wt_p->state = DONE;
 }
 
 void handle_sigint(int sig)
@@ -62,72 +65,74 @@ void handle_sigint(int sig)
 
 }
 
-//int check_work_msg(struct work_msg *msg)
+//int check_work_task_msg(struct work_task_msg *msg)
 //{
 //	if(msg->app_id<0 || msg->app_id>=APPNUM || msg->func_id<0 || msg->func_id>=FUNCNUM)
 //		return PARAM_FAULT;
 //	return 0;
 //}
 
-static int do_work(func_ptr_t fp, void * param)
+static int do_work(struct work_task * work_task)
 {
-	struct args arg = {fp, param};
-	coroutine_new(S, func_wrapper, &arg);
+	printf("start working \n");
+	coroutine_new(S, func_wrapper, (void *)work_task);
 	//TODO:调度可优化，考虑是否每次新加入任务都需要调度
 	coroutine_sched(S);
 }
 
-static void work_cb(void *arg)
+static void work_task_cb(void *arg)
 {
-	struct work *work = arg;
+	struct work_task *work_task = arg;
 	nng_msg *    msg;
 	int          rv;
-	void *       param;
 
-	switch (work->state) {
+	switch (work_task->state) {
 		case INIT:
-			work->state = RECV;
-			nng_ctx_recv(work->ctx, work->aio);
+			work_task->state = RECV;
+			nng_ctx_recv(work_task->ctx, work_task->aio);
 			break;
 		case RECV:
-			if ((rv = nng_aio_result(work->aio)) != 0) {
+			if ((rv = nng_aio_result(work_task->aio)) != 0) {
 				fatal("nng_ctx_recv", rv);
 			}
-			msg = nng_aio_get_msg(work->aio);
-			param = nng_msg_body(msg);
+			msg = nng_aio_get_msg(work_task->aio);
+			work_task->param = nng_msg_body(msg);
 //			if (param == NULL) {
 //				// bad message, just ignore it.
 //				nng_msg_free(msg);
-//				nng_ctx_recv(work->ctx, work->aio);
+//				nng_ctx_recv(work_task->ctx, work_task->aio);
 //				return;
 //			}
-			work->state = WORK;
-			do_work(work->fp, param);
-			//TODO:wait until work done and return values.
-			nng_sleep_aio(0, work->aio);//send msg to worker
-			break;
+			work_task->state = WORK;
+			do_work(work_task);
 		case WORK:
+			nng_sleep_aio(SLEEP_TIME, work_task->aio);//send msg to worker
+			break;
+		case DONE:
 			msg = NULL;
 			if ((rv = nng_msg_alloc(&msg, 0)) != 0) {
 				fatal("nng_msg_alloc", rv);
 			}
 			//TODO:add operations to handle the return values of works.
-//			if ((rv = nng_msg_append(msg, work_rv, sizeof(work_rv))) != 0) {
+//			if ((rv = nng_msg_append(msg, work_task_rv, sizeof(work_task_rv))) != 0) {
 //				fatal("nng_msg_append_u32", rv);
 //			}
-			work->msg = msg;
-			nng_aio_set_msg(work->aio, work->msg);
-			work->msg   = NULL;
-			work->state = SEND;
-			nng_ctx_send(work->ctx, work->aio);
+			work_task->msg = msg;
+			nng_msg_append(msg, &work_task->md, sizeof(work_task->md));
+			nng_aio_set_msg(work_task->aio, work_task->msg);
+			work_task->msg   = NULL;
+			memset(&work_task->md,0,sizeof(mate_date_s));
+			work_task->param = NULL;
+			work_task->state = SEND;
+			nng_ctx_send(work_task->ctx, work_task->aio);
 			break;
 		case SEND:
-			if ((rv = nng_aio_result(work->aio)) != 0) {
-				nng_msg_free(work->msg);
+			if ((rv = nng_aio_result(work_task->aio)) != 0) {
+				nng_msg_free(work_task->msg);
 				fatal("nng_ctx_send", rv);
 			}
-			work->state = RECV;
-			nng_ctx_recv(work->ctx, work->aio);
+			work_task->state = RECV;
+			nng_ctx_recv(work_task->ctx, work_task->aio);
 			break;
 		default:
 			fatal("bad state!", NNG_ESTATE);
@@ -135,15 +140,15 @@ static void work_cb(void *arg)
 	}
 }
 
-static struct work * alloc_work(nng_socket sock, func_ptr_t fp)
+static struct work_task * alloc_work_task(nng_socket sock, func_ptr_t fp)
 {
-	struct work *w;
+	struct work_task *w;
 	int          rv;
 
 	if ((w = nng_alloc(sizeof(*w))) == NULL) {
 		fatal("nng_alloc", NNG_ENOMEM);
 	}
-	if ((rv = nng_aio_alloc(&w->aio, work_cb, w)) != 0) {
+	if ((rv = nng_aio_alloc(&w->aio, work_task_cb, w)) != 0) {
 		fatal("nng_aio_alloc", rv);
 	}
 	if ((rv = nng_ctx_open(&w->ctx, sock)) != 0) {
@@ -162,7 +167,7 @@ void stop_work()
 int start_work_listener(const char *url, func_ptr_t fp)
 {
 	nng_socket   sock;
-	struct work *works[WORK_PARALLEL];
+	struct work_task *work_tasks[WORK_PARALLEL];
 	int          rv;
 	int          i;
 	printf("start work listener url : %s\n", url);
@@ -173,18 +178,19 @@ int start_work_listener(const char *url, func_ptr_t fp)
 	}
 
 	for (i = 0; i < WORK_PARALLEL; i++) {
-		works[i] = alloc_work(sock, fp);
+		work_tasks[i] = alloc_work_task(sock, fp);
 	}
-
+	printf("Alloc work_tasks done\n");
 	if ((rv = nng_listen(sock, url, NULL, 0)) != 0) {
 		fatal("nng_listen", rv);
 	}
-
+	printf("start listening to %s\n", url);
 	S = coroutine_open();
 
 	for (i = 0; i < WORK_PARALLEL; i++) {
-		work_cb(works[i]); // this starts them going (INIT state)
+		work_task_cb(work_tasks[i]); // this starts them going (INIT state)
 	}
+	printf("Work_tasks init done\n");
 	return 0;
 //	for (;;) {
 //		nng_msleep(3600000); // neither pause() nor sleep() portable

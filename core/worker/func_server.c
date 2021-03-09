@@ -22,7 +22,7 @@ func_ptr_t func_ptrs[APPNUM][FUNCNUM] = {{NULL}};
 /**
  * 异步工作请求
  */
-struct work {
+struct func_task {
 	enum {INIT, RECV, WORK, SEND} state;
 	nng_aio *aio;
 	nng_ctx ctx;
@@ -74,53 +74,53 @@ void clean_func(uint32_t aid, uint32_t fid)
 
 void func_cb(void *arg)
 {
-	struct work *work = arg;
+	struct func_task *func_task = arg;
 	nng_msg *    msg;
 	int          rv;
 	struct func_msg *funcMsg;
 
-	switch (work->state) {
+	switch (func_task->state) {
 		case INIT:
-			work->state = RECV;
-			nng_ctx_recv(work->ctx, work->aio);
+			func_task->state = RECV;
+			nng_ctx_recv(func_task->ctx, func_task->aio);
 			break;
 		case RECV:
-			if ((rv = nng_aio_result(work->aio)) != 0) {
+			if ((rv = nng_aio_result(func_task->aio)) != 0) {
 				fatal("nng_ctx_recv", rv);
 			}
-			msg = nng_aio_get_msg(work->aio);
+			msg = nng_aio_get_msg(func_task->aio);
 			funcMsg = (struct func_msg*)nng_msg_body(msg);
 			if (funcMsg == NULL) {
 				printf("error: funcMsg == NULL\n");
 				// bad message, just ignore it.
 				nng_msg_free(msg);
-				nng_ctx_recv(work->ctx, work->aio);
+				nng_ctx_recv(func_task->ctx, func_task->aio);
 				return;
 			}
-			work->msg = msg;
-			work->state = WORK;
+			func_task->msg = msg;
+			func_task->state = WORK;
 			if(add_func(funcMsg) != 0 ){
 				printf("addfunc: param fault!\n");
 			}
 			//TODO: add msg which contain the return value.
-			//nng_aio_begin(work->aio);
-			nng_sleep_aio(0, work->aio);//send msg to worker
+			//nng_aio_begin(func_task->aio);
+			nng_sleep_aio(0, func_task->aio);//send msg to func_tasker
 			printf("add done!\n");
 			break;
 		case WORK:
 			//TODO:add operations to handle the return values of works.
-			nng_aio_set_msg(work->aio, work->msg);
-			work->msg   = NULL;
-			work->state = SEND;
-			nng_ctx_send(work->ctx, work->aio);
+			nng_aio_set_msg(func_task->aio, func_task->msg);
+			func_task->msg   = NULL;
+			func_task->state = SEND;
+			nng_ctx_send(func_task->ctx, func_task->aio);
 			break;
 		case SEND:
-			if ((rv = nng_aio_result(work->aio)) != 0) {
-				nng_msg_free(work->msg);
+			if ((rv = nng_aio_result(func_task->aio)) != 0) {
+				nng_msg_free(func_task->msg);
 				fatal("nng_ctx_send", rv);
 			}
-			work->state = RECV;
-			nng_ctx_recv(work->ctx, work->aio);
+			func_task->state = RECV;
+			nng_ctx_recv(func_task->ctx, func_task->aio);
 			break;
 		default:
 			fatal("bad state!", NNG_ESTATE);
@@ -128,9 +128,9 @@ void func_cb(void *arg)
 	}
 }
 
-static struct work * alloc_work(nng_socket sock)
+static struct func_task * alloc_func_task(nng_socket sock)
 {
-	struct work *w;
+	struct func_task *w;
 	int          rv;
 
 	if ((w = nng_alloc(sizeof(*w))) == NULL) {
@@ -148,7 +148,7 @@ static struct work * alloc_work(nng_socket sock)
 
 int start_func_listener(const char *url){
 	nng_socket   sock;
-	struct work *works[FUNC_PARALLEL];
+	struct func_task *func_tasks[FUNC_PARALLEL];
 	int          rv;
 	int          i;
 
@@ -160,7 +160,7 @@ int start_func_listener(const char *url){
 	}
 
 	for (i = 0; i < FUNC_PARALLEL; i++) {
-		works[i] = alloc_work(sock);
+		func_tasks[i] = alloc_func_task(sock);
 	}
 	 
 	if ((rv = nng_listen(sock, url, NULL, 0)) != 0) {
@@ -168,7 +168,7 @@ int start_func_listener(const char *url){
 	}
 	printf("start listen\n");
 	for (i = 0; i < FUNC_PARALLEL; i++) {
-		func_cb(works[i]); // this starts them going (INIT state)
+		func_cb(func_tasks[i]); // this starts them going (INIT state)
 	}
 	 
 	for (;;) {

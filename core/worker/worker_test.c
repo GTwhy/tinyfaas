@@ -5,13 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/req.h>
 #include <nng/supplemental/util/platform.h>
+#include "work_server.h"
 
-#define COUNT 10;
+#define COUNT 1
 //TODO:消息结构体，以及序列化和反序列化问题需要进一步考虑。
 struct func_msg_trans{
 	uint32_t app_id;
@@ -21,17 +21,18 @@ struct func_msg_trans{
 	char url[128];
 };
 
+struct args{
+	int m;
+	int n;
+};
+
 void
 fatal(const char *func, int rv)
 {
 	fprintf(stderr, "%s: %s\n", func, nng_strerror(rv));
 	exit(1);
 }
-void debug_print()
-{
-	static int num = 0;
-	printf("time: %u step : %d\n",(uint32_t)nng_clock(), ++num);
-}
+
 /*  The client runs just once, and then returns. */
 int
 func_client(const char *func_url, const char *work_url)
@@ -56,7 +57,7 @@ func_client(const char *func_url, const char *work_url)
 	if ((rv = nng_dial(sock, func_url, NULL, 0)) != 0) {
 		fatal("nng_dial", rv);
 	}
-	 
+
 	start = nng_clock();
 
 	if ((rv = nng_msg_alloc(&msg, 0)) != 0) {
@@ -91,7 +92,9 @@ work_client(const char *work_url)
 	nng_msg *  msg;
 	nng_time   start;
 	nng_time   end;
-	char * str = "hello worker!\n";
+	struct args arg;
+	arg.m = 100;
+	arg.n = 999;
 	if ((rv = nng_req0_open(&sock)) != 0) {
 		fatal("nng_req0_open", rv);
 	}
@@ -104,17 +107,20 @@ work_client(const char *work_url)
 		fatal("nng_msg_alloc", rv);
 	}
 
-	if ((rv = nng_msg_append(msg, str, strlen(str))) != 0) {
+
+	if ((rv = nng_msg_append(msg, &arg, sizeof(arg))) != 0) {
 		fatal("nng_msg_append_u32", rv);
 	}
 	start = nng_clock();
-	for(int i = 0; i < 10000; i++){
+	for(int i = 0; i < COUNT; i++){
 		if ((rv = nng_sendmsg(sock, msg, 0)) != 0) {
 			fatal("nng_send", rv);
 		}
 		if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
 			fatal("nng_recvmsg", rv);
 		}
+		mate_date_s * mp = (mate_date_s *)nng_msg_body(msg);
+		printf("Content of recv_msg : %u  %u\n", mp->data_id, mp->data_stat);
 	}
 	end = nng_clock();
 	nng_msg_free(msg);
