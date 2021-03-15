@@ -1,11 +1,6 @@
 #ifndef C_COROUTINE_H
 #define C_COROUTINE_H
 
-#define COROUTINE_DEAD 0
-#define COROUTINE_READY 1
-#define COROUTINE_RUNNING 2
-#define COROUTINE_SUSPEND 3
-
 struct schedule;
 
 // 协程函数指针

@@ -21,8 +21,8 @@ struct coroutine;
 struct schedule {
 	char stack[STACK_SIZE];// 共享栈，但切换时会从堆中分配内存并保存
 	ucontext_t main;       // 当前协程的context 
-	int nco;               // 协程数量
-	int cap;               // 可支持的协程数量
+	int nco;               // 当前存活协程数量
+	int cap;               // 当前最大协程数量，不够时自动扩容
 	int running;           // 当前正在执行协程的id -1 为 main
 	// 协程列表，每个协程以id标识 
 	struct coroutine **co;
@@ -30,13 +30,13 @@ struct schedule {
 
 
 struct coroutine {
+	enum {DEAD, READY, RUNNING, SUSPEND} status;
 	coroutine_func func;    // 协程的目标函数 
 	void *ud;               // 用户数据
 	ucontext_t ctx;         // ucontext 上下文
 	struct schedule * sch; 	// 全局的 schedule 对象
 	ptrdiff_t cap;          // long int 栈容量 
 	ptrdiff_t size;         // 当前的栈用量
-	int status;             // 当前状态
 	char *stack;            // 堆中分配内存保存的自身的栈
 };
 
@@ -48,7 +48,7 @@ _co_new(struct schedule *S , coroutine_func func, void *ud) {
 	co->sch = S;
 	co->cap = 0;
 	co->size = 0;
-	co->status = COROUTINE_READY;
+	co->status =  READY;
 	co->stack = NULL;
 	return co;
 }
@@ -165,7 +165,7 @@ coroutine_sched(struct schedule * S) {
 		if (C == NULL)
 			continue;
 
-		if (C->status == COROUTINE_READY || C->status == COROUTINE_SUSPEND) {
+		if (C->status ==  READY || C->status ==  SUSPEND) {
 			coid = i;
 			break;
 		}	
@@ -176,22 +176,22 @@ coroutine_sched(struct schedule * S) {
 	} 
 	struct coroutine *C = S->co[coid];
 	switch( C->status) {
-	case COROUTINE_READY:
+	case  READY:
 		getcontext(&C->ctx);
 		C->ctx.uc_stack.ss_sp = S->stack;
 		C->ctx.uc_stack.ss_size = STACK_SIZE;
 		C->ctx.uc_link = &S->main;
 		S->running = coid;
-		C->status = COROUTINE_RUNNING;
+		C->status =  RUNNING;
 		uintptr_t ptr = (uintptr_t)S;
 		makecontext(&C->ctx, (void (*)(void)) mainfunc, 2, (uint32_t)ptr, (uint32_t)(ptr>>32));
 		// swapcontext(&S->main, &C->ctx);
 		setcontext(&C->ctx);
 		break;
-	case COROUTINE_SUSPEND:
+	case  SUSPEND:
 		memcpy(S->stack + STACK_SIZE - C->size, C->stack, C->size);
 		S->running = coid;
-		C->status = COROUTINE_RUNNING;
+		C->status =  RUNNING;
 		setcontext(&C->ctx);
 		// swapcontext(&S->main, &C->ctx);
 
@@ -221,7 +221,7 @@ coroutine_yield(struct schedule * S) {
 	struct coroutine * C = S->co[id];
 	assert((char *)&C > S->stack);
 	_save_stack(C,S->stack + STACK_SIZE);
-	C->status = COROUTINE_SUSPEND;
+	C->status =  SUSPEND;
 	// S->running = -1;
 	swapcontext(&C->ctx , &S->main);
 	// getcontext(&C->ctx);
@@ -232,7 +232,7 @@ int
 coroutine_status(struct schedule * S, int id) {
 	assert(id>=0 && id < S->cap);
 	if (S->co[id] == NULL) {
-		return COROUTINE_DEAD;
+		return  DEAD;
 	}
 	return S->co[id]->status;
 }
