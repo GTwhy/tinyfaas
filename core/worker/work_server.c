@@ -3,7 +3,7 @@
 //
 
 #include "work_server.h"
-#include "coroutine.h"
+#include "runtime.h"
 #include "func_server.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,10 +45,10 @@ static void fatal(const char *func, int rv)
 }
 
 
-struct schedule * S;
+struct cart * C;
 
 static void
-func_wrapper(struct schedule *S, void * ud) {
+func_wrapper(struct cart *C, void * ud) {
 	struct work_task * wt_p = ud;
 	wt_p->fp(wt_p->param, &wt_p->md);
 	wt_p->state = DONE;
@@ -75,9 +75,9 @@ void handle_sigint(int sig)
 static int do_work(struct work_task * work_task)
 {
 	printf("start working \n");
-	coroutine_new(S, func_wrapper, (void *)work_task);
+	brick_new(C, func_wrapper, (void *)work_task);
 	//TODO:调度可优化，考虑是否每次新加入任务都需要调度
-	coroutine_sched(S);
+	cart_sched(C);
 }
 
 static void work_task_cb(void *arg)
@@ -161,7 +161,7 @@ static struct work_task * alloc_work_task(nng_socket sock, func_ptr_t fp)
 
 void stop_work()
 {
-	coroutine_close(S);
+	cart_close(C);
 }
 
 int start_work_listener(const char *url, func_ptr_t fp)
@@ -185,7 +185,7 @@ int start_work_listener(const char *url, func_ptr_t fp)
 		fatal("nng_listen", rv);
 	}
 	printf("start listening to %s\n", url);
-	S = coroutine_open();
+	C = cart_open();
 
 	for (i = 0; i < WORK_PARALLEL; i++) {
 		work_task_cb(work_tasks[i]); // this starts them going (INIT state)
