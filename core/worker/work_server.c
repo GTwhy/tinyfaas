@@ -14,12 +14,15 @@
 #include <nng/supplemental/util/platform.h>
 #include <stdio.h>
 #include <signal.h>
+#include <pthread.h>
 //TODO:后续改为自动扩容，动态增加work数量
 #ifndef WORK_PARALLEL
-#define WORK_PARALLEL 8
+#define WORK_PARALLEL 256
 #endif
+#define nDEBUG
+#define SLEEP_TIME 0
 
-#define SLEEP_TIME 10
+pthread_mutex_t new_mutex;
 
 /**
  * 异步工作请求
@@ -49,6 +52,9 @@ static void
 func_wrapper(void * ud) {
 	struct work_task * wt_p = ud;
 	wt_p->fp(wt_p->param, &wt_p->md);
+#ifdef DEBUG
+	printf("func_wrapper : task%d work done\n",wt_p->wid);
+#endif
 	wt_p->state = DONE;
 }
 
@@ -75,8 +81,9 @@ static int do_work(struct work_task * work_task)
 #ifdef DEBUG
 	printf("work_task %d start working \n", work_task->wid);
 #endif
+	pthread_mutex_lock(&new_mutex);
 	brick_new(func_wrapper, (void *)work_task);
-	//TODO:调度可优化，考虑是否每次新加入任务都需要调度
+	pthread_mutex_unlock(&new_mutex);
 }
 
 static void work_task_cb(void *arg)
@@ -186,6 +193,7 @@ int start_work_listener(const char *url, func_ptr_t fp)
 	for (i = 0; i < WORK_PARALLEL; i++) {
 		work_task_cb(work_tasks[i]); // this starts them going (INIT state)
 	}
+	pthread_mutex_init(&new_mutex, NULL);
 	printf("Work_tasks init done\n");
 	return 0;
 //	for (;;) {

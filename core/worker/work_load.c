@@ -1,6 +1,8 @@
 #include<stdio.h>
 #include<math.h>
 #include "work_server.h"
+#include <unistd.h>
+#define nDEBUG
 struct args{
 	int m;
 	int n;
@@ -10,7 +12,9 @@ int work(void * param, void * md)
 {
 	struct args * ap = (struct args *)param;
 	mate_date_s * mp = (mate_date_s *)md;
+#ifdef DEBUG
 	printf("worklaod : args-m:%d  args-n:%d\n",ap->m, ap->n);
+#endif
 	int i,m,n,x,y,z,flag=0;
 	m = ap->m;
 	n = ap->n;
@@ -29,10 +33,13 @@ int work(void * param, void * md)
 		if(pow(x,3)+pow(y,3)+pow(z,3)==i && i!=1000)
 		{
 			flag=1;
+			#ifdef DEBUG
 			printf("%d\n",i);
+			#endif
 		}
 	}
 	if(flag==0)
 		printf("No\n");
+	//sleep(1);
 	return 0;
 }

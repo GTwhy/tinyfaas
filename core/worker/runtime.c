@@ -13,16 +13,12 @@
 	#include <ucontext.h>
 #endif 
 
-#define NDEBUG
+#define DEBUG
 
 #define STACK_SIZE (1024*1024)
-#define DEFAULT_CART_SIZE 4
+#define DEFAULT_CART_SIZE 8
 #define DEFAULT_CART_NUMBER 1
 #define DEFAULT_LABOR_NUMBER 1
-
-struct brick;
-struct cart;
-struct labor;
 
 struct labor * ls[DEFAULT_LABOR_NUMBER];
 struct cart  * cs[DEFAULT_CART_NUMBER];
@@ -33,7 +29,7 @@ struct labor {
 	uint32_t lid;
 	pthread_t ptd;
 	enum {LABOR_DEAD, LABOR_IDLE, LABOR_RUNNING, LABOR_SYSCALL} state;
-	struct cart * c;// attached cart for executing code(null if not executing)
+	struct cart * cp;// attached cart for executing code(null if not executing)
 	pthread_cond_t th_cond;
 	pthread_mutex_t th_mutex;
 };
@@ -41,7 +37,7 @@ struct labor {
 struct cart {
 	uint32_t cid;
 	enum {CART_IDLE, CART_INCREASING, CART_RUNNING} state;
-	struct labor * l;	   	// back-link to associated labor(null if idle)
+	struct labor * lp;	   	// back-link to associated labor(null if idle)
 	char stack[STACK_SIZE];	// shared stack for saving context of bricks
 	ucontext_t main;       	// context of main brick, or the entrance of cart.
 	int nbr;               	// the number of the active bricks
@@ -56,7 +52,7 @@ struct brick {
 	brick_func func;    	// associated function
 	void *ud;               // user date
 	ucontext_t ctx;
-	struct cart * c; 		// associated cart
+	struct cart * cp; 		// associated cart
 	ptrdiff_t cap;          // stack capacity that has been applied.
 	ptrdiff_t size;         // size of used stack
 	char *stack;
@@ -67,7 +63,7 @@ struct brick * _br_new(struct cart *C , brick_func func, void *ud) {
 	br->state = BRICK_INIT;
 	br->func = func;
 	br->ud = ud;
-	br->c = C;
+	br->cp = C;
 	br->cap = 0;
 	br->size = 0 ;
 	br->stack = NULL;
@@ -87,6 +83,7 @@ void _br_delete(struct brick *br) {
 struct cart * cart_open(int cid) {
 	struct cart *C = malloc(sizeof(*C));
 	C->cid = cid;
+	C->lp = NULL;
 	C->state = CART_IDLE;
 	C->nbr = 0;
 	C->cap = DEFAULT_CART_SIZE;
@@ -114,7 +111,11 @@ void * labor_routine(void * param)
 		printf("pthread_%d wake up\n", L->lid);
 #endif
 
-		cart_sched(L->c);
+		if(L->cp == NULL){
+			printf("Labor routine ERROR : L->c is NULL");
+			labor_close(L);
+		}
+		cart_sched(L->cp);
 		pthread_mutex_unlock(&L->th_mutex);
 	}
 #ifdef DEBUG
@@ -126,6 +127,7 @@ void * labor_routine(void * param)
 struct labor * labor_open(int lid) {
 	struct labor *L = malloc(sizeof(*L));
 	L->lid = lid;
+	L->cp = NULL;
 	L->state = LABOR_IDLE;
 	//TODO:init th_cond
 	pthread_cond_init(&L->th_cond, NULL);
@@ -172,6 +174,28 @@ void _call_labor(struct labor * l)
 	}
 }
 
+int _lc_bind(struct labor *l, struct cart *c)
+{
+	if (l->cp == NULL && c->lp == NULL){
+		l->cp = c;
+		c->lp = l;
+		return 0;
+	} else if(l->cp != NULL) {
+		return -1;
+	} else {
+		pthread_mutex_lock(&c->lp->th_mutex);
+		c->lp->cp = NULL;
+		pthread_mutex_unlock(&c->lp->th_mutex);
+		pthread_mutex_lock(&l->th_mutex);
+		c->lp = l;
+		l->cp = c;
+		pthread_mutex_unlock(&l->th_mutex);
+		return 0;
+	}
+
+}
+
+
 int 
 brick_new(brick_func func, void *ud) {
 	struct cart *C = get_cart();
@@ -180,6 +204,7 @@ brick_new(brick_func func, void *ud) {
 	if (C->nbr >= C->cap) {
 		// 协程实例超过限定值， 扩容两倍
 		id = C->cap;
+		printf("cap of cart : %d\n", C->cap);
 		C->br = realloc(C->br, C->cap * 2 * sizeof(struct brick *));
 		memset(C->br + C->cap , 0 , sizeof(struct brick *) * C->cap);
 		// 将协程加入调度器
@@ -203,12 +228,11 @@ brick_new(brick_func func, void *ud) {
 #endif
 	C->state = CART_RUNNING;
 	br->state = BRICK_READY;
-	_call_labor(C->l);
+	_call_labor(C->lp);
 	return id;
 }
 
-static void
-mainfunc(uint32_t low32, uint32_t hi32) {
+static void brick_entrance(uint32_t low32, uint32_t hi32) {
 	// 协程执行
 	uintptr_t ptr = (uintptr_t)low32 | ((uintptr_t)hi32 << 32);
 	struct cart *C = (struct cart *)ptr;
@@ -285,7 +309,7 @@ void cart_sched(struct cart * C) {
 		C->running = brid;
 		B->state =  BRICK_RUNNING;
 		uintptr_t ptr = (uintptr_t)C;
-		makecontext(&B->ctx, (void (*)(void)) mainfunc, 2, (uint32_t)ptr, (uint32_t)(ptr>>32));
+			makecontext(&B->ctx, (void (*)(void)) brick_entrance, 2, (uint32_t) ptr, (uint32_t) (ptr >> 32));
 		// swapcontext(&C->main, &C->ctx);
 		setcontext(&B->ctx);
 		break;
@@ -336,27 +360,8 @@ int brick_running(struct cart * C) {
 	return C->running;
 }
 
-void _lc_bind(struct labor *l, struct cart *c)
-{
-	l->c = c;
-	c->l = l;
-}
 
 
-int runtime_init(void)
-{
-	for (int i = 0; i < DEFAULT_CART_NUMBER; ++i) {
-		cs[i] = cart_open(i);
-	}
-	printf("Alloc cart done\n");
-	for (int i = 0; i < DEFAULT_LABOR_NUMBER; ++i) {
-		ls[i] = labor_open(i);
-	//TODO: need to reinforce (lock)
-	_lc_bind(ls[i], cs[i]);
-	}
-	printf("Alloc labor and bind done\n");
-	return 0;
-}
 
 
 void cart_close(struct cart *C) {
@@ -369,12 +374,14 @@ void cart_close(struct cart *C) {
 	}
 	free(C->br);
 	C->br = NULL;
+	cs[C->cid] = NULL;
 	free(C);
 }
 
 void labor_close(struct labor *L)
 {
 	pthread_cancel(L->ptd);
+	ls[L->lid] = NULL;
 	free(L);
 }
 
@@ -388,4 +395,18 @@ void runtime_exit()
 		cart_close(cs[i]);
 	}
 	return;
+}
+
+int runtime_init(void)
+{
+	for (int i = 0; i < DEFAULT_CART_NUMBER; ++i) {
+		cs[i] = cart_open(i);
+	}
+	printf("Alloc cart done\n");
+	for (int i = 0; i < DEFAULT_LABOR_NUMBER; ++i) {
+		ls[i] = labor_open(i);
+		_lc_bind(ls[i], cs[i]);
+	}
+	printf("Alloc labor and bind done\n");
+	return 0;
 }
