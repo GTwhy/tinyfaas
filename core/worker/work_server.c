@@ -16,15 +16,16 @@
 #include <signal.h>
 //TODO:后续改为自动扩容，动态增加work数量
 #ifndef WORK_PARALLEL
-#define WORK_PARALLEL 128
+#define WORK_PARALLEL 8
 #endif
 
-#define SLEEP_TIME 1
+#define SLEEP_TIME 10
 
 /**
  * 异步工作请求
  */
 struct work_task {
+	int wid;
 	enum {INIT, RECV, WORK, DONE, SEND} state;
 	nng_aio *aio;
 	nng_ctx ctx;
@@ -44,11 +45,8 @@ static void fatal(const char *func, int rv)
 	exit(1);
 }
 
-
-struct cart * C;
-
 static void
-func_wrapper(struct cart *C, void * ud) {
+func_wrapper(void * ud) {
 	struct work_task * wt_p = ud;
 	wt_p->fp(wt_p->param, &wt_p->md);
 	wt_p->state = DONE;
@@ -74,18 +72,20 @@ void handle_sigint(int sig)
 
 static int do_work(struct work_task * work_task)
 {
-	printf("start working \n");
-	brick_new(C, func_wrapper, (void *)work_task);
+#ifdef DEBUG
+	printf("work_task %d start working \n", work_task->wid);
+#endif
+	brick_new(func_wrapper, (void *)work_task);
 	//TODO:调度可优化，考虑是否每次新加入任务都需要调度
-	cart_sched(C);
 }
 
 static void work_task_cb(void *arg)
 {
 	struct work_task *work_task = arg;
-	nng_msg *    msg;
 	int          rv;
-
+#ifdef DEBUG
+	printf("wid : %d  state : %d\n", work_task->wid, work_task->state);
+#endif
 	switch (work_task->state) {
 		case INIT:
 			work_task->state = RECV;
@@ -95,8 +95,8 @@ static void work_task_cb(void *arg)
 			if ((rv = nng_aio_result(work_task->aio)) != 0) {
 				fatal("nng_ctx_recv", rv);
 			}
-			msg = nng_aio_get_msg(work_task->aio);
-			work_task->param = nng_msg_body(msg);
+			work_task->msg = nng_aio_get_msg(work_task->aio);
+			work_task->param = nng_msg_body(work_task->msg);
 //			if (param == NULL) {
 //				// bad message, just ignore it.
 //				nng_msg_free(msg);
@@ -109,20 +109,15 @@ static void work_task_cb(void *arg)
 			nng_sleep_aio(SLEEP_TIME, work_task->aio);//send msg to worker
 			break;
 		case DONE:
-			msg = NULL;
-			if ((rv = nng_msg_alloc(&msg, 0)) != 0) {
+			if ((rv = nng_msg_alloc(&work_task->msg, 0)) != 0) {
 				fatal("nng_msg_alloc", rv);
 			}
 			//TODO:add operations to handle the return values of works.
 //			if ((rv = nng_msg_append(msg, work_task_rv, sizeof(work_task_rv))) != 0) {
 //				fatal("nng_msg_append_u32", rv);
 //			}
-			work_task->msg = msg;
-			nng_msg_append(msg, &work_task->md, sizeof(work_task->md));
+			nng_msg_append(work_task->msg, &work_task->md, sizeof(work_task->md));
 			nng_aio_set_msg(work_task->aio, work_task->msg);
-			work_task->msg   = NULL;
-			memset(&work_task->md,0,sizeof(mate_date_s));
-			work_task->param = NULL;
 			work_task->state = SEND;
 			nng_ctx_send(work_task->ctx, work_task->aio);
 			break;
@@ -131,6 +126,10 @@ static void work_task_cb(void *arg)
 				nng_msg_free(work_task->msg);
 				fatal("nng_ctx_send", rv);
 			}
+			nng_msg_free(work_task->msg);
+			work_task->msg   = NULL;
+			memset(&work_task->md,0,sizeof(mate_date_s));
+			work_task->param = NULL;
 			work_task->state = RECV;
 			nng_ctx_recv(work_task->ctx, work_task->aio);
 			break;
@@ -159,11 +158,6 @@ static struct work_task * alloc_work_task(nng_socket sock, func_ptr_t fp)
 	return (w);
 }
 
-void stop_work()
-{
-	cart_close(C);
-}
-
 int start_work_listener(const char *url, func_ptr_t fp)
 {
 	nng_socket   sock;
@@ -172,6 +166,7 @@ int start_work_listener(const char *url, func_ptr_t fp)
 	int          i;
 	printf("start work listener url : %s\n", url);
 	/*  Create the socket. */
+
 	rv = nng_rep0_open(&sock);
 	if (rv != 0) {
 		fatal("nng_rep0_open", rv);
@@ -179,13 +174,14 @@ int start_work_listener(const char *url, func_ptr_t fp)
 
 	for (i = 0; i < WORK_PARALLEL; i++) {
 		work_tasks[i] = alloc_work_task(sock, fp);
+		work_tasks[i]->wid = i;
 	}
 	printf("Alloc work_tasks done\n");
 	if ((rv = nng_listen(sock, url, NULL, 0)) != 0) {
 		fatal("nng_listen", rv);
 	}
 	printf("start listening to %s\n", url);
-	C = cart_open();
+	runtime_init();
 
 	for (i = 0; i < WORK_PARALLEL; i++) {
 		work_task_cb(work_tasks[i]); // this starts them going (INIT state)

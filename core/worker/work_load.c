@@ -10,7 +10,7 @@ int work(void * param, void * md)
 {
 	struct args * ap = (struct args *)param;
 	mate_date_s * mp = (mate_date_s *)md;
-
+	printf("worklaod : args-m:%d  args-n:%d\n",ap->m, ap->n);
 	int i,m,n,x,y,z,flag=0;
 	m = ap->m;
 	n = ap->n;
