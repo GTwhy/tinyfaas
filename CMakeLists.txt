@@ -16,5 +16,8 @@ target_link_libraries(lutf nng::nng dl ${CMAKE_THREAD_LIBS_INIT} m pthread)
 add_executable(worker_test core/worker/worker_test.c)
 target_link_libraries(worker_test nng::nng ${CMAKE_THREAD_LIBS_INIT} pthread)
 
+add_executable(runtime_test core/worker/runtime_test.c)
+target_link_libraries(runtime_test nng::nng ${CMAKE_THREAD_LIBS_INIT} pthread)
+
 add_library(work SHARED core/worker/work_load.c)
 target_link_libraries(work m)
