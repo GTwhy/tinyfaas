@@ -116,6 +116,7 @@ static void work_task_cb(void *arg)
 			nng_sleep_aio(SLEEP_TIME, work_task->aio);//send msg to worker
 			break;
 		case DONE:
+			nng_msg_free(work_task->msg);
 			if ((rv = nng_msg_alloc(&work_task->msg, 0)) != 0) {
 				fatal("nng_msg_alloc", rv);
 			}
