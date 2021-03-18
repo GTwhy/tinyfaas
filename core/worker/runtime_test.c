@@ -116,10 +116,9 @@ main(int argc, char **argv)
 {
 
 	if (argc != 2) {
-		fprintf(stderr, "Usage: %s <func_url> <work_url>\n", argv[0]);
+		fprintf(stderr, "Usage: %s <work_url>\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
-	sleep(3);
 	count = 0;
 	pthread_mutex_init(&th_mutex, NULL);
 	pthread_t pts[THREAD_NUMBER];
