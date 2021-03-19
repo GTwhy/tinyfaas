@@ -40,6 +40,6 @@ int work(void * param, void * md)
 	}
 	if(flag==0)
 		printf("No\n");
-	//sleep(1);
+	//usleep(10000);
 	return 0;
 }

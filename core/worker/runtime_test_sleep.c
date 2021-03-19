@@ -1,7 +1,3 @@
-//
-// Created by why on 2021/3/4.
-//
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,8 +9,9 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #define THREAD_NUMBER 2
-#define COUNT 10000
+#define COUNT 1000000
 #define DEBUG
+#define TIME 100000
 
 
 //TODO:消息结构体，以及序列化和反序列化问题需要进一步考虑。
@@ -27,8 +24,7 @@ struct func_msg_trans{
 };
 
 struct args{
-	int m;
-	int n;
+	int time;
 };
 
 nng_time   start;
@@ -47,55 +43,6 @@ fatal(const char *func, int rv)
 	exit(1);
 }
 
-/*  The client runs just once, and then returns. */
-int
-func_client(const char *func_url, const char *work_url)
-{
-	nng_socket sock;
-	int        rv;
-	nng_msg *  msg;
-	struct func_msg_trans funcMsg;
-
-	funcMsg.app_id = 0;
-	funcMsg.func_id = 0;
-	strcpy(funcMsg.url, work_url);
-	strcpy(funcMsg.func_path, "./libwork.so");
-	strcpy(funcMsg.func_name, "work");
-
-	if ((rv = nng_req0_open(&sock)) != 0) {
-		fatal("nng_req0_open", rv);
-	}
-
-	if ((rv = nng_dial(sock, func_url, NULL, 0)) != 0) {
-		fatal("nng_dial", rv);
-	}
-
-	start = nng_clock();
-
-	if ((rv = nng_msg_alloc(&msg, 0)) != 0) {
-		fatal("nng_msg_alloc", rv);
-	}
-
-	if ((rv = nng_msg_append(msg, &funcMsg, sizeof(funcMsg))) != 0) {
-		fatal("nng_msg_append_u32", rv);
-	}
-
-	if ((rv = nng_sendmsg(sock, msg, 0)) != 0) {
-		fatal("nng_send", rv);
-	}
-
-	if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
-		fatal("nng_recvmsg", rv);
-	}
-
-	end = nng_clock();
-	nng_msg_free(msg);
-	nng_close(sock);
-
-	printf("Func request took %u milliseconds.\n", (uint32_t)(end - start));
-	return (0);
-}
-
 void end_print()
 {
 	end = nng_clock();
@@ -111,8 +58,7 @@ work_client(void * url)
 	int        rv;
 	nng_msg *  msg;
 	struct args arg;
-	arg.m = 100;
-	arg.n = 999;
+	arg.time = TIME;
 	if ((rv = nng_req0_open(&sock)) != 0) {
 		fatal("nng_req0_open", rv);
 	}
@@ -144,10 +90,10 @@ work_client(void * url)
 		}
 		mate_date_s * mp = (mate_date_s *)nng_msg_body(recv_msg);
 		printf("Content of recv_msg : %u  %u\n", mp->data_id, mp->data_stat);
-		pthread_mutex_lock(&th_mutex);
 #ifdef DEBUG
 		printf("count : %d\n", count);
 #endif
+		pthread_mutex_lock(&th_mutex);
 		if(++count >= COUNT)
 			end_print();
 		pthread_mutex_unlock(&th_mutex);
@@ -156,23 +102,20 @@ work_client(void * url)
 }
 
 
-
 int
 main(int argc, char **argv)
 {
 
-	if (argc != 3) {
-		fprintf(stderr, "Usage: %s <func_url> <work_url>\n", argv[0]);
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s <work_url>\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
-	func_client(argv[1], argv[2]);
-	sleep(3);
 	count = 0;
 	pthread_mutex_init(&th_mutex, NULL);
 	pthread_t pts[THREAD_NUMBER];
 
 	for (int i = 0; i < THREAD_NUMBER; ++i) {
-		pthread_create(&pts[i], NULL, work_client, argv[2]);
+		pthread_create(&pts[i], NULL, work_client, argv[1]);
 	}
 	start = nng_clock();
 	for (;;) {
