@@ -20,7 +20,7 @@
 #define WORK_PARALLEL 128
 #endif
 #define nDEBUG
-#define SLEEP_TIME 0
+#define SLEEP_TIME 1
 
 /**
  * 异步工作请求
@@ -56,23 +56,7 @@ func_wrapper(void * ud) {
 	wt_p->state = DONE;
 }
 
-void handle_sigint(int sig)
-{
-	// 解析参数(貌似 signal 无法传递参数)
-	// 加载程序
 
-	// 创建协程
-//	struct args arg3 = { 200 };
-//	coroutine_new(S, func_wrapper, &arg3);
-
-}
-
-//int check_work_task_msg(struct work_task_msg *msg)
-//{
-//	if(msg->app_id<0 || msg->app_id>=APPNUM || msg->func_id<0 || msg->func_id>=FUNCNUM)
-//		return PARAM_FAULT;
-//	return 0;
-//}
 
 static int do_work(struct work_task * work_task)
 {
@@ -174,7 +158,6 @@ int start_work_listener(const char *url, func_ptr_t fp)
 	int          i;
 	printf("start work listener url : %s\n", url);
 	/*  Create the socket. */
-
 	rv = nng_rep0_open(&sock);
 	if (rv != 0) {
 		fatal("nng_rep0_open", rv);

@@ -12,11 +12,22 @@
 #include "work_server.h"
 #include <pthread.h>
 #include <sys/wait.h>
-#define THREAD_NUMBER 1
+#define THREAD_NUMBER 4
 #define COUNT 10000
 #define DEBUG
-#define TIME 100000
+#define TIME 0
+#define nIPC_MODE
+#define TCP_MODE
+#define RAND_URL "rand"
+#ifdef TCP_MODE
+#define DEFAULT_FUNCTION_URL "tcp://localhost:2672"
+#endif
 
+#ifdef IPC_MODE
+#define DEFAULT_FUNCTION_URL "ipc:///tmp/2672"
+#endif
+
+char rand_url[128];
 
 //TODO:消息结构体，以及序列化和反序列化问题需要进一步考虑。
 struct func_msg_trans{
@@ -26,6 +37,7 @@ struct func_msg_trans{
 	char func_name[64];
 	char url[128];
 };
+
 
 struct args{
 	int time;
@@ -87,7 +99,14 @@ func_client(const char *func_url, const char *work_url)
 	if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
 		fatal("nng_recvmsg", rv);
 	}
-
+	struct func_resp_msg * fmp = nng_msg_body(msg);
+	if(fmp->state == ADD_FUNCTION_SUCCESS){
+		strcpy(rand_url, fmp->rand_url);
+		printf("Get rand url from server : %s\n", rand_url);
+	}else{
+		printf("ADD_FUNCTION_FAILURE\n");
+		exit(1);
+	}
 	end = nng_clock();
 	nng_msg_free(msg);
 	nng_close(sock);
@@ -163,17 +182,19 @@ main(int argc, char **argv)
 {
 
 	if (argc != 3) {
-		fprintf(stderr, "Usage: %s <func_url> <work_url>\n", argv[0]);
-		exit(EXIT_FAILURE);
+		printf("Tips : user defined url: %s <url>\n", argv[0]);
+		printf("Using the default function server url : %s\n", DEFAULT_FUNCTION_URL);
+		func_client(DEFAULT_FUNCTION_URL, RAND_URL);
+	} else{
+		func_client(argv[1], argv[2]);
 	}
-	func_client(argv[1], argv[2]);
 	sleep(3);
 	count = 0;
 	pthread_mutex_init(&th_mutex, NULL);
 	pthread_t pts[THREAD_NUMBER];
 
 	for (int i = 0; i < THREAD_NUMBER; ++i) {
-		pthread_create(&pts[i], NULL, work_client, argv[2]);
+		pthread_create(&pts[i], NULL, work_client, rand_url);
 	}
 	start = nng_clock();
 	for (;;) {

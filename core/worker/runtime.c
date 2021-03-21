@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <signal.h>
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/req.h>
 #include <nng/supplemental/util/platform.h>
@@ -18,7 +19,6 @@
 
 #define nDEBUG
 
-#define STACK_SIZE (1024*1024)
 #define STACK_SIZE (1024*1024)
 #define DEFAULT_CART_SIZE 8
 #define DEFAULT_CART_NUMBER 4
@@ -94,6 +94,13 @@ struct brick * _br_new(struct cart *C , brick_func func, void *ud) {
 }
 
 
+
+void signal_handler(int sig)
+{
+
+}
+
+
 void _br_delete(struct brick *br) {
 #ifdef DEBUG
 #endif
@@ -101,7 +108,7 @@ void _br_delete(struct brick *br) {
 		free(br->stack);
 	if (br->bid < DEFAULT_CART_SIZE){
 		br->state = BRICK_IDLE;
-		printf("RESET STATE OF IDLE BRICK bid : %d\n", br->bid);
+		printf("RESET STATE OF IDLE BRICK cid : %d   bid : %d\n",br->cp->cid, br->bid);
 		return;
 	}
 	printf("DELETE NEW BRICK  cid : %d  bid : %d\n", br->cp->cid, br->bid);
@@ -410,9 +417,6 @@ int brick_state(struct cart * C, int id) {
 int brick_running(struct cart * C) {
 	return C->running;
 }
-
-
-
 
 
 void cart_close(struct cart *C) {
