@@ -15,8 +15,8 @@
 #include <dlfcn.h>
 #include <string.h>
 #define FUNC_PARALLEL 8
-#define IPC_MODE
-#define nTCP_MODE
+#define nIPC_MODE
+#define TCP_MODE
 #ifdef IPC_MODE
 #define DEFAULT_WORK_URL "ipc:///tmp/267"
 #endif
