@@ -9,9 +9,13 @@ int work(void * param, void * md)
 {
 	struct args * ap = (struct args *)param;
 	mate_date_s * mp = (mate_date_s *)md;
-	printf("sleep time : %d \n",ap->time);
+	printf("sleep time : %d us\n",ap->time);
 	mp->data_id = 2;
 	mp->data_stat = 333;
-	usleep(ap->time);
+	printf("Going to sleep\n");
+	for(int i = 0; i < 10; i++){
+		usleep(ap->time);
+		printf("sleep loop : %d\n", i);
+	}
 	return 0;
 }
