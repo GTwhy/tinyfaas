@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <signal.h>
+#include <unistd.h>
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/req.h>
 #include <nng/supplemental/util/platform.h>
@@ -18,16 +19,19 @@
 #endif 
 
 #define nDEBUG
-
+#define SUSPEND_TEST_TIME 5000000
 #define STACK_SIZE (1024*1024)
 #define DEFAULT_CART_SIZE 8
-#define DEFAULT_CART_NUMBER 4
-#define DEFAULT_LABOR_NUMBER 4
+#define DEFAULT_CART_NUMBER 1
+#define DEFAULT_LABOR_NUMBER 1
 
+int cart_num = DEFAULT_CART_NUMBER;
+int labor_num = DEFAULT_LABOR_NUMBER;
 struct labor * ls[DEFAULT_LABOR_NUMBER];
 struct cart  * cs[DEFAULT_CART_NUMBER];
 static int cf = 0;
 pthread_mutex_t pub_lock;
+pthread_t super_ptd;
 
 struct labor {
 	uint32_t lid;
@@ -94,13 +98,36 @@ struct brick * _br_new(struct cart *C , brick_func func, void *ud) {
 }
 
 
-
-void signal_handler(int sig)
+/**
+ * suspend the current brick.
+ * @param sig
+ */
+void suspend_sig_handler(int sig)
 {
-
+	pthread_t ptd = pthread_self();
+	for(int i = 0; i < cart_num; i++){
+		//The labor which this thread belongs to.
+		if(ls[i]->ptd == ptd){
+			if(ls[i]->cp != NULL){
+				if(ls[i]->cp->running == -1){
+					printf("No brick is running\n");
+					return ;
+				}
+				brick_yield(ls[i]->cp);
+				return ;
+			} else{
+				//handle the situation that labor is not bind with a cart anymore.
+				//just return, but it might need be killed.
+				return ;
+			}
+		}
+	}
 }
 
-
+/**
+ * delete the brick unless it was reserved.
+ * @param br
+ */
 void _br_delete(struct brick *br) {
 #ifdef DEBUG
 #endif
@@ -116,6 +143,11 @@ void _br_delete(struct brick *br) {
 		free(br);
 }
 
+/**
+ * new a cart
+ * @param cid
+ * @return
+ */
 struct cart * cart_open(int cid) {
 	struct cart *C = malloc(sizeof(*C));
 	C->cid = cid;
@@ -130,6 +162,11 @@ struct cart * cart_open(int cid) {
 	return C;
 }
 
+/**
+ * The main loop of labors.
+ * @param The parameters required by brick.
+ * @return
+ */
 void * labor_routine(void * param)
 {
 	struct labor * L = (struct labor *) param;
@@ -306,8 +343,6 @@ static void brick_entrance(uint32_t low32, uint32_t hi32) {
 }
 
 
-
-
 /*
  * 协程调度
  * id : 当前协程的 id
@@ -403,6 +438,7 @@ void brick_yield(struct cart * C) {
 	assert((char *)&B > C->stack);
 	_save_stack(B,C->stack + STACK_SIZE);
 	B->state =  BRICK_SUSPEND;
+	printf("brick_yield : brick %d suspend\n", B->bid);
 	swapcontext(&B->ctx , &C->main);
 }
 
@@ -466,10 +502,48 @@ void brick_new_ahead(struct cart * C)
 	}
 }
 
+void set_sig_handlers(void)
+{
+	signal(SUSPEND_SIG_NUM, suspend_sig_handler);
+}
+
+/**
+ * send a signal to thread corresponding to labor.
+ * @param l
+ * @param signum
+ */
+void send_sig_to_labor(struct labor * l, int signum){
+	pthread_kill(l->ptd, signum);
+};
+
+/**
+ * Used to test whether the response of suspend signal is normal.
+ */
+void suspend_sig_test()
+{
+	usleep(SUSPEND_TEST_TIME);
+	send_sig_to_labor(ls[0], SUSPEND_SIG_NUM);
+}
+
+
+void* supervisor_routine(void* param)
+{
+	while(1){
+		suspend_sig_test();
+	}
+}
+
+/**
+ * Supervisor is used to supervise the runtime.
+ */
+void init_supervisor(void){
+	pthread_create(&super_ptd, NULL, supervisor_routine,NULL);
+}
 
 int runtime_init(void)
 {
 	pthread_mutex_init(&pub_lock, NULL);
+	set_sig_handlers();
 	for (int i = 0; i < DEFAULT_CART_NUMBER; ++i) {
 		cs[i] = cart_open(i);
 		brick_new_ahead(cs[i]);
@@ -479,6 +553,7 @@ int runtime_init(void)
 		ls[i] = labor_open(i);
 		_lc_bind(ls[i], cs[i]);
 	}
+	init_supervisor();
 	printf("Alloc labor and bind done\n");
 	return 0;
 }

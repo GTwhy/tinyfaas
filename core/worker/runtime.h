@@ -1,5 +1,9 @@
 #ifndef C_COROUTINE_H
 #define C_COROUTINE_H
+#include <signal.h>
+
+//signum used to suspend the current brick.
+#define SUSPEND_SIG_NUM (SIGRTMIN+3)
 
 struct cart;
 struct labor;
@@ -14,5 +18,6 @@ void cart_sched(struct cart *);
 int brick_status(struct cart *, int id);
 int brick_running(struct cart *);
 void brick_yield(struct cart *);
+void send_sig_to_labor(struct labor * l, int signum);
 
 #endif
