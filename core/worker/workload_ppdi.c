@@ -22,7 +22,7 @@ int work(void * param, void * md)
 	mp->data_stat = 888;
 	if(m<100||m>n||n>999)
 	{
-		printf("Erroe!\n");
+		printf("ppdi : param error!\n");
 		return 0;
 	}
 	for(i=m;i<=n;i++){

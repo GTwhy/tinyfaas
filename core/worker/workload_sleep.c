@@ -13,7 +13,7 @@ int work(void * param, void * md)
 	mp->data_id = 2;
 	mp->data_stat = 333;
 	printf("Going to sleep\n");
-	for(int i = 0; i < 10; i++){
+	for(int i = 1; i < 11; i++){
 		usleep(ap->time);
 		printf("sleep loop : %d\n", i);
 	}
