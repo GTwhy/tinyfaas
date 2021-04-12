@@ -15,7 +15,7 @@ void labor_close(struct labor *L);
 int runtime_init(void);
 int brick_new(brick_func, void *ud);
 void cart_sched(struct cart *);
-int brick_status(struct cart *, int id);
+int brick_state(struct cart *, int id);
 int brick_running(struct cart *);
 void brick_yield(struct cart *);
 void send_sig_to_labor(struct labor * l, int signum);

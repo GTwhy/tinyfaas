@@ -108,6 +108,7 @@ void suspend_sig_handler(int sig)
 	for(int i = 0; i < cart_num; i++){
 		//The labor which this thread belongs to.
 		if(ls[i]->ptd == ptd){
+			printf("labor  %d  received a signal\n", i);
 			if(ls[i]->cp != NULL){
 				if(ls[i]->cp->running == -1){
 					printf("No brick is running\n");
@@ -131,8 +132,9 @@ void suspend_sig_handler(int sig)
 void _br_delete(struct brick *br) {
 #ifdef DEBUG
 #endif
-	if (br->stack != NULL)
+	if (br->stack != NULL){
 		free(br->stack);
+	}
 	if (br->bid < DEFAULT_CART_SIZE){
 		br->state = BRICK_IDLE;
 		printf("RESET STATE OF IDLE BRICK cid : %d   bid : %d\n",br->cp->cid, br->bid);
@@ -202,10 +204,8 @@ struct labor * labor_open(int lid) {
 	L->lid = lid;
 	L->cp = NULL;
 	L->state = LABOR_IDLE;
-	//TODO:init th_cond
 	pthread_cond_init(&L->th_cond, NULL);
 	pthread_mutex_init(&L->th_mutex, NULL);
-	//TODO:check threads
 	pthread_create(&L->ptd, NULL, labor_routine, L);
 	return L;
 }
@@ -369,22 +369,22 @@ void cart_sched(struct cart * C) {
 	// 选择一个可调度的协程
 	// 循环选择
 	// 可引入一个max 来优化判断的次数
+	struct brick *b;
 	for (int i = start_id; i != end_id; i = (i+1) % C->cap ) {
-		// printf("check id:%d \n ", i);
-		struct brick *B = C->br[i];
-
-		if ((B != NULL) && (B->state ==  BRICK_READY || B->state ==  BRICK_SUSPEND)) {
+		b = C->br[i];
+		if ((b != NULL) && (b->state ==  BRICK_READY || b->state ==  BRICK_SUSPEND)) {
 			brid = i;
-#ifdef DEBUG
-			printf("cart_sched: brick_%d is going to run\n", brid);
-#endif
 			C->state = CART_RUNNING;
 			break;
 		} else{
 			continue;
 		}
 	}
-	/* 这部分可单独封装为调度策略 */
+	b = C->br[end_id];
+	if ((b != NULL) && (b->state ==  BRICK_READY || b->state ==  BRICK_SUSPEND)) {
+		brid = end_id;
+		C->state = CART_RUNNING;
+	}
 	if (brid == -1 ) {
 #ifdef DEBUG
 		printf("cart_sched: No brick is going to run\n");
@@ -516,12 +516,22 @@ void send_sig_to_labor(struct labor * l, int signum){
 	pthread_kill(l->ptd, signum);
 };
 
+void check_cart(struct cart * C)
+{
+	printf("check_cart : State of cart_%d, Running brick_%d\n", C->cid, C->running);
+	for (int i = 0; i < C->cap; ++i) {
+		printf("brick_%d : %d\n", i, brick_state(C, i));
+	}
+}
+
+
 /**
  * Used to test whether the response of suspend signal is normal.
  */
 void suspend_sig_test()
 {
 	usleep(SUSPEND_TEST_TIME);
+	check_cart(cs[0]);
 	send_sig_to_labor(ls[0], SUSPEND_SIG_NUM);
 }
 
