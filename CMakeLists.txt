@@ -29,3 +29,7 @@ add_executable(runtime_test_sleep core/worker/runtime_test_sleep.c)
 target_link_libraries(runtime_test_sleep nng::nng ${CMAKE_THREAD_LIBS_INIT} pthread)
 
 add_library(work_sleep SHARED core/worker/workload_sleep.c)
+
+add_executable(worker_tools_test core/worker/worker_tools_test.c core/worker/worker_tools.c core/worker/worker_tools.h)
+target_link_libraries(worker_tools_test nng::nng ${CMAKE_THREAD_LIBS_INIT} pthread)
+
