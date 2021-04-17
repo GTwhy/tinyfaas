@@ -32,14 +32,19 @@ void request_test(void)
 
 int main(void)
 {
+	printf("add func\n");
 	add_func_test();
-	sleep(1);
+	sleep(2);
 	request_test();
-	printf("stop\n");
+	printf("stop func\n");
 	stop_function(NULL,0,0,0);
 	sleep(2);
+	printf("restore func\n");
 	restore_function(NULL,0,0,0);
-	printf("restore\n");
+	request_test();
+	printf("delete func\n");
+	sleep(2);
+	delete_function(NULL,0,0,0);
 	request_test();
 	free_url(work_server_url);
 	return 0;

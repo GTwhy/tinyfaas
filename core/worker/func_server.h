@@ -36,12 +36,14 @@ struct func_resp_msg{
 
 struct function_config {
 	enum {FUNCTION_ACTIVE, FUNCTION_STOP, FUNCTION_DEAD} state;
+	int fid;
 	uint32_t app_id;
 	uint32_t func_id;
 	char func_path[64];
 	char func_name[64];
 	char url[128];
 	func_ptr_t func_ptr;
+	void * dlp;
 };
 
 

@@ -8,14 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <signal.h>
 #include <dlfcn.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <errno.h>
 
 #define nIPC_MODE
 #define TCP_MODE
@@ -36,6 +33,7 @@ int work_server_count = 0;
 struct work_server {
 	enum {WORK_SERVER_ACTIVE, WORK_SERVER_STOP, WORK_SERVER_DEAD} state;
 	pid_t pid;
+	int wid;
 	struct function_config * func_conf;
 };
 
@@ -68,6 +66,7 @@ struct function_config * function_init(struct func_req_msg *msg)
 	memcpy(fp->func_path, msg->func_path, sizeof(msg->func_path));
 	fp->app_id = msg->app_id;
 	fp->func_id = msg->func_id;
+	fp->func_id = function_count;
 	if(strlen(msg->url) < 8) {
 		//make a new url for this function
 		if (port_base_number > 99) {
@@ -82,9 +81,11 @@ struct function_config * function_init(struct func_req_msg *msg)
 		//use the user defined url
 		memcpy(fp->url, msg->url, strlen(msg->url));
 	}
-	void* lib = dlopen(msg->func_path, RTLD_LAZY);
-	func_ptr_t func = dlsym(lib, msg->func_name);
+	void* dlp = dlopen(msg->func_path, RTLD_LAZY);
+	func_ptr_t func = dlsym(dlp, msg->func_name);
 	fp->func_ptr = func;
+	fp->dlp = dlp;
+
 	printf("New function path:%s  name:%s  url:%s\n", fp->func_path, fp->func_name, fp->url);
 	return fp;
 }
@@ -101,6 +102,7 @@ struct work_server * work_server_start(struct function_config * fp)
 	} else if (pid > 0){
 		//func_server process
 		wp->pid = pid;
+		wp->wid = work_server_count;
 		wp->func_conf = fp;
 		wp->state = WORK_SERVER_ACTIVE;
 		return wp;
@@ -229,6 +231,21 @@ int function_restore(struct func_req_msg *req_msg, struct func_resp_msg * resp_m
 }
 
 /**
+ * Delete data of work_server after it dead.
+ * @param wsp
+ */
+void work_server_clean(struct work_server * wsp)
+{
+	work_server_list[wsp->wid] = NULL;
+	function_config_list[wsp->func_conf->fid] = NULL;
+	dlclose(wsp->func_conf->dlp);
+	free(wsp->func_conf);
+	free(wsp);
+	wsp = NULL;
+}
+
+
+/**
  * Init a function_config and start up a work_server for this function.
  * The two steps may be split in the future.
  * @param req_msg from function uploader.
@@ -237,37 +254,31 @@ int function_restore(struct func_req_msg *req_msg, struct func_resp_msg * resp_m
  */
 int function_delete(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 {
-	struct function_config * fp = NULL;
-	struct work_server * wp = NULL;
-	printf("New function is coming\n");
+	struct work_server * wsp = NULL;
+	printf("function_delete\n");
 	req_msg_print(req_msg);
-	if(check_func_msg(req_msg) < 0){
-		resp_msg->state = ADD_FUNCTION_FAILURE;
+	resp_msg->state = DELETE_FUNCTION_FAILURE;
+	for (int i = 0; i < work_server_count; ++i) {
+		wsp = work_server_list[i];
+		if (wsp != NULL) {
+			if (wsp->pid > 0 && wsp->state != WORK_SERVER_DEAD) {
+				if (wsp->func_conf->app_id == req_msg->app_id && wsp->func_conf->func_id == req_msg->func_id) {
+					resp_msg->state = DELETE_FUNCTION_SUCCESS;
+					//send signal to work_server and let it stop.
+					kill(wsp->pid, SIGKILL);
+					printf("deleted work_server's pid: %d\n", wsp->pid);
+					//Maybe you could not clean but set their state to DEAD, and reuse them sometime.
+					work_server_clean(wsp);
+//					wsp->state = WORK_SERVER_DEAD;
+//					//TODO:Split work_server's state and function's state.
+//					wsp->func_conf->state = FUNCTION_DEAD;
+				}
+			}
+		}
+	}
+	if (resp_msg->state == DELETE_FUNCTION_FAILURE) {
 		return -1;
 	}
-	if(function_count >= DEFAULT_FUNCTION_NUMBER){
-		printf("Maximum number of functions reached\n");
-		resp_msg->state = ADD_FUNCTION_FAILURE;
-		return -2;
-	}
-	fp = function_init(req_msg);
-
-	if (fp->func_ptr == NULL){
-		printf("Can not get function\n");
-		resp_msg->state = ADD_FUNCTION_FAILURE;
-		return -3;
-	}
-
-	wp = work_server_start(fp);
-	if (wp == NULL){
-		printf("work_server_start failed\n");
-		resp_msg->state = ADD_FUNCTION_FAILURE;
-		return -4;
-	}
-	function_config_list[function_count++] = fp;
-	work_server_list[work_server_count++] = wp;
-	resp_msg->state = ADD_FUNCTION_SUCCESS;
-	strcpy(resp_msg->rand_url, fp->url);
 	return 0;
 }
 
@@ -303,11 +314,11 @@ void func_cb(int sockfd)
 		case STOP_FUNCTION:
 			function_stop(&req_msg, &resp_msg);
 			break;
-		case DELETE_FUNCTION:
-			function_delete(&req_msg, &resp_msg);
-			break;
 		case RESTORE_FUNCTION:
 			function_restore(&req_msg, &resp_msg);
+			break;
+		case DELETE_FUNCTION:
+			function_delete(&req_msg, &resp_msg);
 			break;
 	}
 	pos = 0;

@@ -10,6 +10,7 @@ char * add_new_function(char * func_server_ip, uint16_t func_server_port, char *
 void * make_function_request(void * work_server_url, void * args, size_t args_size);
 int stop_function(char * func_server_ip, uint16_t func_server_port, int app_id, int func_id);
 int restore_function(char * func_server_ip, uint16_t func_server_port, int app_id, int func_id);
+int delete_function(char * func_server_ip, uint16_t func_server_port, int app_id, int func_id);
 void free_rv(void * rv);
 void free_url(char * url);
 
