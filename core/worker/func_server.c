@@ -8,9 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <nng/nng.h>
-#include <nng/protocol/reqrep0/rep.h>
-#include <nng/supplemental/util/platform.h>
+#include <sys/types.h>
+#include <signal.h>
 #include <dlfcn.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -29,8 +28,8 @@
 #endif
 #define DEFAULT_FUNCTION_NUMBER 100
 int port_base_number = 2;
-struct function_config * function_config_list[DEFAULT_FUNCTION_NUMBER];
-struct work_server * work_server_list[DEFAULT_FUNCTION_NUMBER];
+struct function_config * function_config_list[DEFAULT_FUNCTION_NUMBER] = {NULL};
+struct work_server * work_server_list[DEFAULT_FUNCTION_NUMBER] = {NULL};
 int function_count = 0;
 int work_server_count = 0;
 
@@ -40,21 +39,14 @@ struct work_server {
 	struct function_config * func_conf;
 };
 
-
-static void fatal(const char *func, int rv)
-{
-	printf("time: %u", (uint32_t)nng_clock());
-	fprintf(stderr, "%s: %s\n", func, nng_strerror(rv));
-	exit(1);
-}
-
 void req_msg_print(struct func_req_msg * msg)
 {
 	printf("req_msg_print:\n");
-	printf("app_id:%d\n", msg->app_id);
-	printf("func_id:%d\n", msg->func_id);
-	printf("func_path:%s\n", msg->func_path);
-	printf("func_name:%s\n", msg->func_name);
+	printf("\t req_msg type : %u\n",msg->type);
+	printf("\t app_id:%d\n", msg->app_id);
+	printf("\t func_id:%d\n", msg->func_id);
+	printf("\t func_path:%s\n", msg->func_path);
+	printf("\t func_name:%s\n", msg->func_name);
 }
 
 int check_func_msg(struct func_req_msg *msg)
@@ -97,7 +89,7 @@ struct function_config * function_init(struct func_req_msg *msg)
 	return fp;
 }
 
-struct work_server * work_server_init(struct function_config * fp)
+struct work_server * work_server_start(struct function_config * fp)
 {
 	pid_t pid;
 	struct work_server * wp = malloc(sizeof(struct work_server));
@@ -114,9 +106,126 @@ struct work_server * work_server_init(struct function_config * fp)
 		return wp;
 	} else{
 		//error
-		printf("work_server_init fault\n");
+		printf("work_server_start fault\n");
 		return NULL;
 	}
+}
+
+
+
+/**
+ * Init a function_config and start up a work_server for this function.
+ * The two steps may be split in the future.
+ * @param req_msg from function uploader.
+ * @param resp_msg send to function uploader.
+ * @return Return 0 if successful
+ */
+int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
+{
+	struct function_config * fp = NULL;
+	struct work_server * wp = NULL;
+	printf("function_new\n");
+	req_msg_print(req_msg);
+	if(check_func_msg(req_msg) < 0){
+		resp_msg->state = ADD_FUNCTION_FAILURE;
+		return -1;
+	}
+	if(function_count >= DEFAULT_FUNCTION_NUMBER){
+		printf("Maximum number of functions reached\n");
+		resp_msg->state = ADD_FUNCTION_FAILURE;
+		return -2;
+	}
+	fp = function_init(req_msg);
+
+	if (fp->func_ptr == NULL){
+		printf("Can not get function\n");
+		resp_msg->state = ADD_FUNCTION_FAILURE;
+		return -3;
+	}
+
+	wp = work_server_start(fp);
+	if (wp == NULL){
+		printf("work_server_start failed\n");
+		resp_msg->state = ADD_FUNCTION_FAILURE;
+		return -4;
+	}
+	function_config_list[function_count++] = fp;
+	work_server_list[work_server_count++] = wp;
+	resp_msg->state = ADD_FUNCTION_SUCCESS;
+	strcpy(resp_msg->rand_url, fp->url);
+	return 0;
+}
+
+
+
+/**
+ * Stop the work_server and function.
+ * The two steps may be split in the future.
+ * @param req_msg from function uploader.
+ * @param resp_msg send to function uploader.
+ * @return Return 0 if successful
+ */
+int function_stop(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
+{
+	struct work_server * wsp = NULL;
+	printf("function_stop\n");
+	req_msg_print(req_msg);
+	resp_msg->state = STOP_FUNCTION_FAILURE;
+	for (int i = 0; i < work_server_count; ++i) {
+		wsp = work_server_list[i];
+		if (wsp != NULL){
+			if (wsp->pid > 0 && wsp->state == WORK_SERVER_ACTIVE){
+				if(wsp->func_conf->app_id == req_msg->app_id && wsp->func_conf->func_id == req_msg->func_id){
+					resp_msg->state = STOP_FUNCTION_SUCCESS;
+					//send signal to work_server and let it stop.
+					kill(wsp->pid, SIGSTOP);
+					printf("stoped work_server's pid: %d\n", wsp->pid);
+					wsp->state = WORK_SERVER_STOP;
+					//TODO:Split work_server's state and function's state.
+					wsp->func_conf->state = FUNCTION_STOP;
+				}
+			}
+		}
+	}
+	if (resp_msg->state == STOP_FUNCTION_FAILURE){
+		return -1;
+	}
+	return 0;
+}
+
+
+/**
+ * Restore the work_server and function.
+ * The two steps may be split in the future.
+ * @param req_msg from function uploader.
+ * @param resp_msg send to function uploader.
+ * @return Return 0 if successful
+ */
+int function_restore(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg) {
+	struct work_server *wsp = NULL;
+	printf("function_stop\n");
+	req_msg_print(req_msg);
+	resp_msg->state = RESTORE_FUNCTION_FAILURE;
+	for (int i = 0; i < work_server_count; ++i) {
+		wsp = work_server_list[i];
+		if (wsp != NULL) {
+			if (wsp->pid > 0 && wsp->state == WORK_SERVER_STOP) {
+				if (wsp->func_conf->app_id == req_msg->app_id && wsp->func_conf->func_id == req_msg->func_id) {
+					resp_msg->state = RESTORE_FUNCTION_SUCCESS;
+					//send signal to work_server and let it stop.
+					kill(wsp->pid, SIGCONT);
+					printf("restored work_server's pid: %d\n", wsp->pid);
+					wsp->state = WORK_SERVER_ACTIVE;
+					//TODO:Split work_server's state and function's state.
+					wsp->func_conf->state = FUNCTION_ACTIVE;
+				}
+			}
+		}
+	}
+	if (resp_msg->state == RESTORE_FUNCTION_FAILURE) {
+		return -1;
+	}
+	return 0;
 }
 
 /**
@@ -126,7 +235,7 @@ struct work_server * work_server_init(struct function_config * fp)
  * @param resp_msg send to function uploader.
  * @return
  */
-int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
+int function_delete(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 {
 	struct function_config * fp = NULL;
 	struct work_server * wp = NULL;
@@ -149,9 +258,9 @@ int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 		return -3;
 	}
 
-	wp = work_server_init(fp);
+	wp = work_server_start(fp);
 	if (wp == NULL){
-		printf("work_server_init failed\n");
+		printf("work_server_start failed\n");
 		resp_msg->state = ADD_FUNCTION_FAILURE;
 		return -4;
 	}
@@ -161,6 +270,8 @@ int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 	strcpy(resp_msg->rand_url, fp->url);
 	return 0;
 }
+
+
 //
 //void clean_func(uint32_t aid, uint32_t fid)
 //{
@@ -185,8 +296,20 @@ void func_cb(int sockfd)
 		}
 		pos += len;
 	}
-	function_new(&req_msg, &resp_msg);
-	printf("resp_msg state: %u url: %s\n", resp_msg.state, resp_msg.rand_url);
+	switch (req_msg.type) {
+		case ADD_FUNCTION:
+			function_new(&req_msg, &resp_msg);
+			break;
+		case STOP_FUNCTION:
+			function_stop(&req_msg, &resp_msg);
+			break;
+		case DELETE_FUNCTION:
+			function_delete(&req_msg, &resp_msg);
+			break;
+		case RESTORE_FUNCTION:
+			function_restore(&req_msg, &resp_msg);
+			break;
+	}
 	pos = 0;
 	while(pos < resp_msg_size)
 	{

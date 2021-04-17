@@ -35,6 +35,12 @@ int main(void)
 	add_func_test();
 	sleep(1);
 	request_test();
+	printf("stop\n");
+	stop_function(NULL,0,0,0);
+	sleep(2);
+	restore_function(NULL,0,0,0);
+	printf("restore\n");
+	request_test();
 	free_url(work_server_url);
 	return 0;
 }
