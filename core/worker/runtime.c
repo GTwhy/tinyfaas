@@ -22,8 +22,8 @@
 #define SUSPEND_TEST_TIME 5000000
 #define STACK_SIZE (1024*1024)
 #define DEFAULT_CART_SIZE 8
-#define DEFAULT_CART_NUMBER 1
-#define DEFAULT_LABOR_NUMBER 1
+#define DEFAULT_CART_NUMBER 4
+#define DEFAULT_LABOR_NUMBER 4
 
 int cart_num = DEFAULT_CART_NUMBER;
 int labor_num = DEFAULT_LABOR_NUMBER;
@@ -563,7 +563,7 @@ int runtime_init(void)
 		ls[i] = labor_open(i);
 		_lc_bind(ls[i], cs[i]);
 	}
-	init_supervisor();
+	//init_supervisor();
 	printf("Alloc labor and bind done\n");
 	return 0;
 }

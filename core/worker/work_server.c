@@ -178,8 +178,8 @@ int start_work_listener(const char *url, func_ptr_t fp)
 		work_task_cb(work_tasks[i]); // this starts them going (INIT state)
 	}
 	printf("Work_tasks init done\n");
-	return 0;
-//	for (;;) {
-//		nng_msleep(3600000); // neither pause() nor sleep() portable
-//	}
+	for (;;) {
+		nng_msleep(3600000); // neither pause() nor sleep() portable
+	}
+	//return 0;
 }

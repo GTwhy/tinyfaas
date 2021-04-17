@@ -4,17 +4,20 @@
 
 #include "func_server.h"
 #include "work_server.h"
-#include "runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
+#include <unistd.h>
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/rep.h>
 #include <nng/supplemental/util/platform.h>
 #include <dlfcn.h>
 #include <string.h>
-#define FUNC_PARALLEL 8
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
+
 #define nIPC_MODE
 #define TCP_MODE
 #ifdef IPC_MODE
@@ -24,21 +27,19 @@
 #ifdef TCP_MODE
 #define DEFAULT_WORK_URL "tcp://localhost:267"
 #endif
-
 #define DEFAULT_FUNCTION_NUMBER 100
 int port_base_number = 2;
-func_ptr_t pptr;
 struct function_config * function_config_list[DEFAULT_FUNCTION_NUMBER];
+struct work_server * work_server_list[DEFAULT_FUNCTION_NUMBER];
 int function_count = 0;
-/**
- * 异步工作请求
- */
-struct func_task {
-	enum {INIT, RECV, WORK, SEND} state;
-	nng_aio *aio;
-	nng_ctx ctx;
-	nng_msg *msg;
+int work_server_count = 0;
+
+struct work_server {
+	enum {WORK_SERVER_ACTIVE, WORK_SERVER_STOP, WORK_SERVER_DEAD} state;
+	pid_t pid;
+	struct function_config * func_conf;
 };
+
 
 static void fatal(const char *func, int rv)
 {
@@ -47,10 +48,13 @@ static void fatal(const char *func, int rv)
 	exit(1);
 }
 
-void debug_print()
+void req_msg_print(struct func_req_msg * msg)
 {
-	static int num = 0;
-	printf("time: %u step : %d\n",(uint32_t)nng_clock(), ++num);
+	printf("req_msg_print:\n");
+	printf("app_id:%d\n", msg->app_id);
+	printf("func_id:%d\n", msg->func_id);
+	printf("func_path:%s\n", msg->func_path);
+	printf("func_name:%s\n", msg->func_name);
 }
 
 int check_func_msg(struct func_req_msg *msg)
@@ -58,7 +62,7 @@ int check_func_msg(struct func_req_msg *msg)
 	//TODO:可细化参数检查，增加错误输出。
 	if(msg->app_id<0 || msg->app_id>=APPNUM || msg->func_id<0 || msg->func_id>=FUNCNUM || msg->func_path == NULL || msg->func_name == NULL || msg->url == NULL)
 	{
-		printf("PARAM_FAULT :  path:%s\n name:%s\n url:%s\n",msg->func_path,msg->func_name,msg->url);
+		printf("req_msg : PARAM_FAULT :  path:%s\n name:%s\n url:%s\n",msg->func_path,msg->func_name,msg->url);
 		return PARAM_FAULT;
 	}
 	return 0;
@@ -89,15 +93,46 @@ struct function_config * function_init(struct func_req_msg *msg)
 	void* lib = dlopen(msg->func_path, RTLD_LAZY);
 	func_ptr_t func = dlsym(lib, msg->func_name);
 	fp->func_ptr = func;
-	pptr = func;
+	printf("New function path:%s  name:%s  url:%s\n", fp->func_path, fp->func_name, fp->url);
 	return fp;
 }
 
-int function_new(struct func_req_msg *msg, struct func_resp_msg * resp_msg)
+struct work_server * work_server_init(struct function_config * fp)
+{
+	pid_t pid;
+	struct work_server * wp = malloc(sizeof(struct work_server));
+	memset(fp, 0, sizeof(struct work_server));
+	pid = fork();
+	if(pid == 0){
+		//work_server process
+		start_work_listener(fp->url, fp->func_ptr);
+	} else if (pid > 0){
+		//func_server process
+		wp->pid = pid;
+		wp->func_conf = fp;
+		wp->state = WORK_SERVER_ACTIVE;
+		return wp;
+	} else{
+		//error
+		printf("work_server_init fault\n");
+		return NULL;
+	}
+}
+
+/**
+ * Init a function_config and start up a work_server for this function.
+ * The two steps may be split in the future.
+ * @param req_msg from function uploader.
+ * @param resp_msg send to function uploader.
+ * @return
+ */
+int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 {
 	struct function_config * fp = NULL;
+	struct work_server * wp = NULL;
 	printf("New function is coming\n");
-	if(check_func_msg(msg)<0){
+	req_msg_print(req_msg);
+	if(check_func_msg(req_msg) < 0){
 		resp_msg->state = ADD_FUNCTION_FAILURE;
 		return -1;
 	}
@@ -106,17 +141,24 @@ int function_new(struct func_req_msg *msg, struct func_resp_msg * resp_msg)
 		resp_msg->state = ADD_FUNCTION_FAILURE;
 		return -2;
 	}
-	fp = function_init(msg);
+	fp = function_init(req_msg);
+
 	if (fp->func_ptr == NULL){
+		printf("Can not get function\n");
 		resp_msg->state = ADD_FUNCTION_FAILURE;
 		return -3;
 	}
-	function_config_list[function_count++] = fp;
 
-	printf("New function path:%s  name:%s  url:%s\n", fp->func_path, fp->func_name, fp->url);
+	wp = work_server_init(fp);
+	if (wp == NULL){
+		printf("work_server_init failed\n");
+		resp_msg->state = ADD_FUNCTION_FAILURE;
+		return -4;
+	}
+	function_config_list[function_count++] = fp;
+	work_server_list[work_server_count++] = wp;
 	resp_msg->state = ADD_FUNCTION_SUCCESS;
 	strcpy(resp_msg->rand_url, fp->url);
-	start_work_listener(fp->url, fp->func_ptr);
 	return 0;
 }
 //
@@ -125,112 +167,63 @@ int function_new(struct func_req_msg *msg, struct func_resp_msg * resp_msg)
 //	dlclose(func_ptrs[aid][fid]);
 //}
 
-void func_cb(void *arg)
+void func_cb(int sockfd)
 {
-	struct func_task *func_task = arg;
-	nng_msg *    msg;
-	int          rv;
-	struct func_req_msg *funcMsg;
+	ssize_t req_msg_size = sizeof(struct func_req_msg);
+	ssize_t resp_msg_size = sizeof(struct func_resp_msg);
+	struct func_req_msg req_msg;
+	struct func_resp_msg resp_msg;
+	ssize_t pos = 0;
+	ssize_t len = 0;
+	while(pos < req_msg_size)
+	{
 
-	switch (func_task->state) {
-		case INIT:
-			func_task->state = RECV;
-			nng_ctx_recv(func_task->ctx, func_task->aio);
-			break;
-		case RECV:
-			if ((rv = nng_aio_result(func_task->aio)) != 0) {
-				fatal("nng_ctx_recv", rv);
-			}
-			msg = nng_aio_get_msg(func_task->aio);
-			funcMsg = (struct func_req_msg*)nng_msg_body(msg);
-			if (funcMsg == NULL) {
-				printf("error: funcMsg == NULL\n");
-				// bad message, just ignore it.
-				nng_msg_free(msg);
-				nng_ctx_recv(func_task->ctx, func_task->aio);
-				return;
-			}
-			struct func_resp_msg * resp_smg = malloc(sizeof(struct func_resp_msg));
-			function_new(funcMsg, resp_smg);
-			if(resp_smg->state == ADD_FUNCTION_SUCCESS){
-				printf("ADD_FUNCTION_SUCCESS\n");
-				func_task->state = WORK;
-			} else{
-				printf("ADD_FUNCTION_FAILURE\n");
-				func_task->state = WORK;
-			}
-			nng_msg_alloc(&func_task->msg, 0);
-			nng_msg_append(func_task->msg, resp_smg, sizeof(struct func_resp_msg));
-			printf("content of resp_msg : %d  %s\n", resp_smg->state,resp_smg->rand_url);
-			//nng_aio_begin(func_task->aio);
-			nng_sleep_aio(0, func_task->aio);//send msg to func_tasker
-			break;
-		case WORK:
-			//TODO:add operations to handle the return values of works.
-			nng_aio_set_msg(func_task->aio, func_task->msg);
-			func_task->state = SEND;
-			nng_ctx_send(func_task->ctx, func_task->aio);
-			break;
-		case SEND:
-			if ((rv = nng_aio_result(func_task->aio)) != 0) {
-				nng_msg_free(func_task->msg);
-				fatal("nng_ctx_send", rv);
-			}
-			nng_msg_free(func_task->msg);
-			func_task->msg = NULL;
-			func_task->state = RECV;
-			nng_ctx_recv(func_task->ctx, func_task->aio);
-			break;
-		default:
-			fatal("bad state!", NNG_ESTATE);
-			break;
+		len = read(sockfd, &req_msg+pos, req_msg_size);
+		if (len < 0) {
+			printf("func_server receive data failed\n");
+			return ;
+		}
+		pos += len;
+	}
+	function_new(&req_msg, &resp_msg);
+	printf("resp_msg state: %u url: %s\n", resp_msg.state, resp_msg.rand_url);
+	pos = 0;
+	while(pos < resp_msg_size)
+	{
+
+		len = write(sockfd, &resp_msg + pos, resp_msg_size);
+		if (len < 0) {
+			printf("server send data failed\n");
+			return ;
+		}
+		pos += len;
 	}
 }
 
-static struct func_task * alloc_func_task(nng_socket sock)
-{
-	struct func_task *w;
-	int          rv;
 
-	if ((w = nng_alloc(sizeof(*w))) == NULL) {
-		fatal("nng_alloc", NNG_ENOMEM);
-	}
-	if ((rv = nng_aio_alloc(&w->aio, func_cb, w)) != 0) {
-		fatal("nng_aio_alloc", rv);
-	}
-	if ((rv = nng_ctx_open(&w->ctx, sock)) != 0) {
-		fatal("nng_ctx_open", rv);
-	}
-	w->state = INIT;
-	return (w);
-}
-
-int start_func_listener(const char *url){
-	nng_socket   sock;
-	struct func_task *func_tasks[FUNC_PARALLEL];
-	int          rv;
-	int          i;
-
-	 
-	/*  Create the socket. */
-	rv = nng_rep0_open(&sock);
-	if (rv != 0) {
-		fatal("nng_rep0_open", rv);
-	}
-
-	for (i = 0; i < FUNC_PARALLEL; i++) {
-		func_tasks[i] = alloc_func_task(sock);
-	}
-	 
-	if ((rv = nng_listen(sock, url, NULL, 0)) != 0) {
-		fatal("nng_listen", rv);
-	}
-	printf("start listen\n");
-	for (i = 0; i < FUNC_PARALLEL; i++) {
-		func_cb(func_tasks[i]); // this starts them going (INIT state)
-	}
-	 
-	for (;;) {
-		nng_msleep(3600000); // neither pause() nor sleep() portable
+int start_func_listener(char *ip, uint16_t port){
+	int listenfd, connfd;    //监听描述符，连接描述符
+	struct sockaddr_in server_addr, client_addr;//16 bytes
+	socklen_t client_addr_size = sizeof(client_addr);
+	/*socket函数*/
+	listenfd=socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	/*服务器地址*/
+	memset(&server_addr, 0, sizeof(server_addr));
+	server_addr.sin_family=AF_INET;
+	server_addr.sin_addr.s_addr=inet_addr(ip);
+	server_addr.sin_port=htons(port);
+	/*bind函数*/
+	if(bind(listenfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+		perror("bind error");
+	/*listen函数*/
+	if(listen(listenfd, 10) < 0)
+		perror("listen error");
+	while(1)
+	{
+		if((connfd=accept(listenfd, (struct sockaddr*)&client_addr, &client_addr_size)) < 0)
+			return 0;
+		//close(listenfd);    //关闭监听描述符
+		func_cb(connfd);    //处理请求
+		close(connfd);   //父进程关闭连接描述符
 	}
 }

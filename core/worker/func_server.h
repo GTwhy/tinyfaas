@@ -14,10 +14,11 @@
 #define APPNUM 8
 
 typedef int (*func_ptr_t)(void * param, void * md);
-int start_func_listener(const char *url);
+int start_func_listener(char *ip, uint16_t port);
 
 //TODO:消息结构体，以及序列化和反序列化问题需要进一步考虑。
 struct func_req_msg{
+	enum {ADD_FUNCTION, DELETE_FUNCTION, STOP_FUNCTION, RESTORE_FUNCTION} type;
 	uint32_t app_id;
 	uint32_t func_id;
 	char func_path[64];
@@ -38,7 +39,6 @@ struct function_config {
 	char func_name[64];
 	char url[128];
 	func_ptr_t func_ptr;
-
 };
 
 
