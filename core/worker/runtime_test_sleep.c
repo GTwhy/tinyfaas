@@ -7,21 +7,11 @@
 #include <nng/supplemental/util/platform.h>
 #include "work_server.h"
 #include <pthread.h>
-#include <sys/wait.h>
 #define THREAD_NUMBER 2
-#define COUNT 1000000
+#define COUNT 10000
 #define DEBUG
-#define TIME 100000
+#define TIME 1000
 
-
-//TODO:消息结构体，以及序列化和反序列化问题需要进一步考虑。
-struct func_msg_trans{
-	uint32_t app_id;
-	uint32_t func_id;
-	char func_path[64];
-	char func_name[64];
-	char url[128];
-};
 
 struct args{
 	int time;
@@ -30,9 +20,7 @@ struct args{
 nng_time   start;
 nng_time   end;
 
-static int count;
-
-static int send_count = 0;
+static int count = 1;
 
 pthread_mutex_t th_mutex;
 
@@ -79,11 +67,7 @@ work_client(void * url)
 		if ((rv = nng_sendmsg(sock, msg, 0)) != 0) {
 			fatal("nng_send", rv);
 		}
-		pthread_mutex_lock(&th_mutex);
-//#ifdef DEBUG
-//		printf("send count : %d\n", ++send_count);
-//#endif
-		pthread_mutex_unlock(&th_mutex);
+
 		nng_msg_alloc(&recv_msg, 0);
 		if ((rv = nng_recvmsg(sock, &recv_msg, 0)) != 0) {
 			fatal("nng_recvmsg", rv);

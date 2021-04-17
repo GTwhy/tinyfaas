@@ -13,7 +13,7 @@ add_executable(lutf core/worker/work_server.c core/worker/func_server.c core/wor
         core/worker/work_server.h core/worker/func_server.h core/worker/runtime.c core/worker/runtime.h)
 target_link_libraries(lutf nng::nng dl ${CMAKE_THREAD_LIBS_INIT} m pthread)
 
-add_executable(worker_test_ppdi core/worker/worker_test_ppdi.c)
+add_executable(worker_test_ppdi core/worker/worker_test_ppdi.c core/worker/worker_tools.h core/worker/worker_tools.c)
 target_link_libraries(worker_test_ppdi nng::nng ${CMAKE_THREAD_LIBS_INIT} pthread)
 
 add_executable(runtime_test_ppdi core/worker/runtime_test_ppdi.c)
@@ -22,7 +22,7 @@ target_link_libraries(runtime_test_ppdi nng::nng ${CMAKE_THREAD_LIBS_INIT} pthre
 add_library(work_ppdi SHARED core/worker/workload_ppdi.c)
 target_link_libraries(work_ppdi m)
 
-add_executable(worker_test_sleep core/worker/worker_test_sleep.c)
+add_executable(worker_test_sleep core/worker/worker_test_sleep.c core/worker/worker_tools.h core/worker/worker_tools.c)
 target_link_libraries(worker_test_sleep nng::nng ${CMAKE_THREAD_LIBS_INIT} pthread)
 
 add_executable(runtime_test_sleep core/worker/runtime_test_sleep.c)

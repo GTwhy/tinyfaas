@@ -11,29 +11,21 @@
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/req.h>
 #include <nng/supplemental/util/platform.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
 #define DEBUG
 #define nIPC_MODE
 #define TCP_MODE
 #define RAND_URL "rand"
 #ifdef TCP_MODE
-#define DEFAULT_FUNCTION_URL "tcp://localhost:2672"
+#define DEFAULT_FUNCTION_IP "127.0.0.1"
+#define DEFAULT_FUNCTION_PORT 2672
 #endif
 
-#ifdef IPC_MODE
-#define DEFAULT_FUNCTION_URL "ipc:///tmp/2672"
-#endif
-
-//TODO:消息结构体，以及序列化和反序列化问题需要进一步考虑。
-struct func_msg_trans{
-	uint32_t app_id;
-	uint32_t func_id;
-	char func_path[64];
-	char func_name[64];
-	char url[128];
-};
-
-void
+static void
 fatal(const char *func, int rv)
 {
 	fprintf(stderr, "%s: %s\n", func, nng_strerror(rv));
@@ -98,6 +90,8 @@ void free_url(char * url)
 	}
 }
 
+
+
 /**
  * Low-level api used to upload a function to set a function service.
  * And this api is not created for developers, but called by the orchestrator that knows the url of worker's func_server.
@@ -110,12 +104,15 @@ void free_url(char * url)
  * @param func_id			The id of this function.
  * @return					The pointer points to the work_server_url(needs free() after used).
  */
-char * add_new_function(char * func_server_url, char * work_server_url, char * workload_path, char * func_name, int app_id, int func_id)
+char * add_new_function(char * func_server_ip, uint16_t func_server_port, char * work_server_url, char * workload_path, char * func_name, int app_id, int func_id)
 {
-	nng_socket sock;
-	int        rv;
-	nng_msg *  msg;
-	struct func_msg_trans funcMsg;
+	size_t req_msg_size = sizeof(struct func_req_msg);
+	size_t resp_msg_size = sizeof(struct func_resp_msg);
+	struct func_req_msg * req_msg = malloc(req_msg_size);
+	struct func_resp_msg * resp_msg = malloc(resp_msg_size);
+	ssize_t pos = 0;
+	ssize_t len = 0;
+
 	//TODO:check the parameters
 	if(workload_path == NULL){
 		printf("workload_path must be set\n");
@@ -127,57 +124,71 @@ char * add_new_function(char * func_server_url, char * work_server_url, char * w
 		return NULL;
 	}
 
-	if(func_server_url == NULL){
-		func_server_url = DEFAULT_FUNCTION_URL;
-		printf("Using the default function server url : %s\n", DEFAULT_FUNCTION_URL);
+	if(func_server_ip == NULL){
+		func_server_ip = DEFAULT_FUNCTION_IP;
+		func_server_port = DEFAULT_FUNCTION_PORT;
+		printf("Using the default function server url : %s:%d\n", DEFAULT_FUNCTION_IP, DEFAULT_FUNCTION_PORT);
 	}
 
 	if(work_server_url == NULL){
 		work_server_url = RAND_URL;
 		printf("Using the  work server url returned by function server\n");
 	}
-	funcMsg.app_id = app_id;
-	funcMsg.func_id = func_id;
-	strcpy(funcMsg.url, work_server_url);
-	strcpy(funcMsg.func_path, workload_path);
-	strcpy(funcMsg.func_name, func_name);
+	req_msg->type = ADD_FUNCTION;
+	req_msg->app_id = app_id;
+	req_msg->func_id = func_id;
+	strcpy(req_msg->url, work_server_url);
+	strcpy(req_msg->func_path, workload_path);
+	strcpy(req_msg->func_name, func_name);
+	int sockfd;    //网络套接字
+	struct sockaddr_in server_addr;    //服务器地址
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	memset(&server_addr, 0, sizeof(server_addr));
 
-	if ((rv = nng_req0_open(&sock)) != 0) {
-		fatal("nng_req0_open", rv);
-	}
+	server_addr.sin_family=AF_INET;
+	server_addr.sin_addr.s_addr=inet_addr(func_server_ip);
+	server_addr.sin_port=htons(func_server_port);
 
-	if ((rv = nng_dial(sock, func_server_url, NULL, 0)) != 0) {
-		fatal("nng_dial", rv);
-	}
+	if(connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+		perror("can't connect to server");
 
-	if ((rv = nng_msg_alloc(&msg, 0)) != 0) {
-		fatal("nng_msg_alloc", rv);
-	}
+	while(pos < req_msg_size)
+	{
 
-	if ((rv = nng_msg_append(msg, &funcMsg, sizeof(funcMsg))) != 0) {
-		fatal("nng_msg_append_u32", rv);
+		len = send(sockfd, req_msg + pos, req_msg_size, 0);
+		if (len < 0) {
+			printf("client receive data failed\n");
+			return NULL;
+		}
+		pos += len;
 	}
+	free(req_msg);
+	memset(resp_msg, 0, resp_msg_size);
+	pos = 0;
+	while(pos < resp_msg_size)
+	{
 
-	if ((rv = nng_sendmsg(sock, msg, 0)) != 0) {
-		fatal("nng_send", rv);
+		len = read(sockfd, resp_msg + pos, resp_msg_size);
+		if (len < 0) {
+			printf("client receive data failed\n");
+			return NULL;
+		}
+		pos += len;
 	}
+	printf("resp_msg : state: %u url %s\n", resp_msg->state, resp_msg->rand_url);
 
-	if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
-		fatal("nng_recvmsg", rv);
-	}
-	struct func_resp_msg * fmp = nng_msg_body(msg);
-	if(fmp->state == ADD_FUNCTION_SUCCESS){
+	if(resp_msg->state == ADD_FUNCTION_SUCCESS){
 		//User need to use free_url() to free the memory of rand_url.
-		char * rand_url = malloc(strlen(fmp->rand_url));
-		strcpy(rand_url, fmp->rand_url);
-		nng_msg_free(msg);
-		nng_close(sock);
+		char * rand_url = malloc(strlen(resp_msg->rand_url)+1);
+		strcpy(rand_url, resp_msg->rand_url);
+		free(resp_msg);
+		close(sockfd);
 		printf("work url : %s\n", rand_url);
 		return rand_url;
 	}else{
 		printf("ADD_FUNCTION_FAILURE\n");
-		nng_msg_free(msg);
-		nng_close(sock);
+		free(resp_msg);
+		close(sockfd);
 		return NULL;
 	}
 }

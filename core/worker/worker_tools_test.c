@@ -3,6 +3,7 @@
 //
 
 #include "worker_tools.h"
+#include <unistd.h>
 
 #define SLEEP_PATH	"./libwork_sleep.so"
 #define SLEEP_NAME	"work"
@@ -15,9 +16,7 @@ char * work_server_url;
 
 void add_func_test(void)
 {
-	struct args a;
-	a.time = 100;
-	work_server_url = add_new_function(NULL, NULL, SLEEP_PATH, SLEEP_NAME,0, 0);
+	work_server_url = add_new_function(NULL,0, NULL, SLEEP_PATH, SLEEP_NAME,0, 0);
 	printf("add_func_test get work_server_url : %s\n", work_server_url);
 }
 
@@ -34,6 +33,7 @@ void request_test(void)
 int main(void)
 {
 	add_func_test();
+	sleep(1);
 	request_test();
 	free_url(work_server_url);
 	return 0;
