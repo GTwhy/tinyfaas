@@ -14,7 +14,7 @@ int main(int argc, char **argv)
 	if (argc == 3) {
 		//User defined url
 		uint16_t port = (uint16_t)atoi(argv[2]);
-		printf("Using the default function server url : %s:%u\n", argv[1], port);
+		printf("Function server url : %s:%u\n", argv[1], port);
 		start_func_listener(argv[1], port);
 	} else{
 		//Default url

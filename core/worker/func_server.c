@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <wait.h>
 
 #define nIPC_MODE
 #define TCP_MODE
@@ -266,6 +267,7 @@ int function_delete(struct func_req_msg *req_msg, struct func_resp_msg * resp_ms
 					resp_msg->state = DELETE_FUNCTION_SUCCESS;
 					//send signal to work_server and let it stop.
 					kill(wsp->pid, SIGKILL);
+					wait(NULL);
 					printf("deleted work_server's pid: %d\n", wsp->pid);
 					//Maybe you could not clean but set their state to DEAD, and reuse them sometime.
 					work_server_clean(wsp);
