@@ -7,7 +7,8 @@ else
   then
       echo Can not find nng src files.
       echo Git clone nng from Gitee.
-      echo Make sure the cmake --version is higher than 3.13.
+      echo Make sure the cmake --version is higher than 3.16
+      mkdir lib &&
       cd ./lib &&
       git clone https://gitee.com/mirrors/nng.git &&
       cd ..
