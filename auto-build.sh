@@ -16,7 +16,7 @@ else
 
 	echo Build nng first.
 	cd ./lib/nng/ &&
-	mkdir build &&
+	mkdir build
 	cd build &&
 	cmake .. &&
 	make -j4 &&
@@ -25,7 +25,10 @@ else
 
 fi
 
-mkdir build &&
+if ! [ -e "./build" ]
+then
+  mkdir build
+fi
 cd build &&
 cmake .. &&
 make -j4 &&
