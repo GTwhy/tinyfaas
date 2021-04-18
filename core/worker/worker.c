@@ -11,15 +11,16 @@
 
 int main(int argc, char **argv)
 {
-	//TODO:思考需要初始化的参数并初始化
-	if (argc != 2) {
-		printf("Tips : user defined url: %s <url>\n", argv[0]);
+	if (argc == 3) {
+		//User defined url
+		uint16_t port = (uint16_t)atoi(argv[2]);
+		printf("Using the default function server url : %s:%u\n", argv[1], port);
+		start_func_listener(argv[1], port);
+	} else{
+		//Default url
+		printf("Tips : user defined url: %s <ip> <port>\n", argv[0]);
 		printf("Using the default function server url : %s:%d\n", DEFAULT_IP, DEFAULT_PORT);
 		/* init the function listener */
 		start_func_listener(DEFAULT_IP, DEFAULT_PORT);
-	} else{
-		/* init the function listener */
-		//TODO:User defined url.
-		//start_func_listener(argv[1]);
 	}
 }
