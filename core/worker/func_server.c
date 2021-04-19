@@ -40,12 +40,12 @@ struct work_server {
 
 void req_msg_print(struct func_req_msg * msg)
 {
-	printf("req_msg_print:\n");
+	printf("\nfunc_server get req_msg:\n");
 	printf("\t req_msg type : %u\n",msg->type);
 	printf("\t app_id:%d\n", msg->app_id);
 	printf("\t func_id:%d\n", msg->func_id);
 	printf("\t func_path:%s\n", msg->func_path);
-	printf("\t func_name:%s\n", msg->func_name);
+	printf("\t func_name:%s\n\n", msg->func_name);
 }
 
 int check_func_msg(struct func_req_msg *msg)
@@ -131,7 +131,7 @@ int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 {
 	struct function_config * fp = NULL;
 	struct work_server * wp = NULL;
-	printf("function_new\n");
+	printf("function_new : app_id:%d  func_id:%d\n\n", req_msg->app_id, req_msg->func_id);
 	req_msg_print(req_msg);
 	if(check_func_msg(req_msg) < 0){
 		resp_msg->state = ADD_FUNCTION_FAILURE;
@@ -175,7 +175,7 @@ int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 int function_stop(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 {
 	struct work_server * wsp = NULL;
-	printf("function_stop\n");
+	printf("function_stop : app_id:%d  func_id:%d\n\n", req_msg->app_id, req_msg->func_id);
 	req_msg_print(req_msg);
 	resp_msg->state = STOP_FUNCTION_FAILURE;
 	for (int i = 0; i < work_server_count; ++i) {
@@ -186,7 +186,6 @@ int function_stop(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 					resp_msg->state = STOP_FUNCTION_SUCCESS;
 					//send signal to work_server and let it stop.
 					kill(wsp->pid, SIGSTOP);
-					printf("stoped work_server's pid: %d\n", wsp->pid);
 					wsp->state = WORK_SERVER_STOP;
 					//TODO:Split work_server's state and function's state.
 					wsp->func_conf->state = FUNCTION_STOP;
@@ -210,7 +209,7 @@ int function_stop(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
  */
 int function_restore(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg) {
 	struct work_server *wsp = NULL;
-	printf("function_stop\n");
+	printf("function_restore : app_id:%d  func_id:%d\n\n", req_msg->app_id, req_msg->func_id);
 	req_msg_print(req_msg);
 	resp_msg->state = RESTORE_FUNCTION_FAILURE;
 	for (int i = 0; i < work_server_count; ++i) {
@@ -221,7 +220,6 @@ int function_restore(struct func_req_msg *req_msg, struct func_resp_msg * resp_m
 					resp_msg->state = RESTORE_FUNCTION_SUCCESS;
 					//send signal to work_server and let it stop.
 					kill(wsp->pid, SIGCONT);
-					printf("restored work_server's pid: %d\n", wsp->pid);
 					wsp->state = WORK_SERVER_ACTIVE;
 					//TODO:Split work_server's state and function's state.
 					wsp->func_conf->state = FUNCTION_ACTIVE;
@@ -260,7 +258,7 @@ void work_server_clean(struct work_server * wsp)
 int function_delete(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 {
 	struct work_server * wsp = NULL;
-	printf("function_delete\n");
+	printf("function_delete : app_id:%d  func_id:%d\n\n", req_msg->app_id, req_msg->func_id);
 	req_msg_print(req_msg);
 	resp_msg->state = DELETE_FUNCTION_FAILURE;
 	for (int i = 0; i < work_server_count; ++i) {
@@ -272,7 +270,6 @@ int function_delete(struct func_req_msg *req_msg, struct func_resp_msg * resp_ms
 					//send signal to work_server and let it stop.
 					kill(wsp->pid, SIGKILL);
 					wait(NULL);
-					printf("deleted work_server's pid: %d\n", wsp->pid);
 					//Maybe you could not clean but set their state to DEAD, and reuse them sometime.
 					work_server_clean(wsp);
 //					wsp->state = WORK_SERVER_DEAD;

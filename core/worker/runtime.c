@@ -108,10 +108,14 @@ void suspend_sig_handler(int sig)
 	for(int i = 0; i < cart_num; i++){
 		//The labor which this thread belongs to.
 		if(ls[i]->ptd == ptd){
+#ifdef DEBUG
 			printf("labor  %d  received a signal\n", i);
+#endif
 			if(ls[i]->cp != NULL){
 				if(ls[i]->cp->running == -1){
+#ifdef DEBUG
 					printf("No brick is running\n");
+#endif
 					return ;
 				}
 				brick_yield(ls[i]->cp);
@@ -130,17 +134,19 @@ void suspend_sig_handler(int sig)
  * @param br
  */
 void _br_delete(struct brick *br) {
-#ifdef DEBUG
-#endif
 	if (br->stack != NULL){
 		free(br->stack);
 	}
 	if (br->bid < DEFAULT_CART_SIZE){
 		br->state = BRICK_IDLE;
+#ifdef DEBUG
 		printf("RESET STATE OF IDLE BRICK cid : %d   bid : %d\n",br->cp->cid, br->bid);
+#endif
 		return;
 	}
+#ifdef DEBUG
 	printf("DELETE NEW BRICK  cid : %d  bid : %d\n", br->cp->cid, br->bid);
+#endif
 	if(br != NULL)
 		free(br);
 }
@@ -242,8 +248,8 @@ void _call_labor(struct cart * C)
 			pthread_mutex_unlock(&C->cart_mutex);
 			return;
 		case LABOR_IDLE:
-			_wake_up(C->lp);
 			pthread_mutex_unlock(&C->cart_mutex);
+			_wake_up(C->lp);
 			return;
 	}
 }
@@ -279,7 +285,9 @@ brick_new(brick_func func, void *ud) {
 	pthread_mutex_unlock(&C->cart_mutex);
 	if (br->state == BRICK_READY){
 		C->state = CART_RUNNING;
+#ifdef DEBUG
 		printf("IDLE_BRICK is reused to run.   cid : %d   bid : %d \n", br->cp->cid, br->bid);
+#endif
 		_call_labor(C);
 		return br->bid;
 	}
@@ -293,7 +301,9 @@ brick_new(brick_func func, void *ud) {
 		// 将协程加入调度器
 		C->br[C->cap] = br;
 		C->cap *= 2;
+#ifdef DEBUG
 		printf("default cart size is not enough , and new cap of cart : %d\n", C->cap);
+#endif
 		++C->nbr;
 	} else {
 		for (int i=DEFAULT_CART_SIZE; i<C->cap; i++) {
@@ -330,7 +340,9 @@ static void brick_entrance(uint32_t low32, uint32_t hi32) {
 	C->state = CART_IDLE;
 	if (B->ud == NULL){
 		//TODO: Returning here could cause the work_task block and the client won't receive result until timeout.
+#ifdef DEBUG
 		printf("brick_entrance error : param is null.\n");
+#endif
 		_br_delete(B);
 		return;
 	}
@@ -438,7 +450,9 @@ void brick_yield(struct cart * C) {
 	assert((char *)&B > C->stack);
 	_save_stack(B,C->stack + STACK_SIZE);
 	B->state =  BRICK_SUSPEND;
+#ifdef DEBUG
 	printf("brick_yield : brick %d suspend\n", B->bid);
+#endif
 	swapcontext(&B->ctx , &C->main);
 }
 

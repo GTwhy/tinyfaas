@@ -8,13 +8,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/rep.h>
 #include <nng/supplemental/util/platform.h>
-#include <stdio.h>
-#include <signal.h>
-#include <pthread.h>
+
 //TODO:后续改为自动扩容，动态增加work数量
 #ifndef WORK_PARALLEL
 #define WORK_PARALLEL 128
@@ -98,14 +95,6 @@ static void work_task_cb(void *arg)
 			nng_sleep_aio(SLEEP_TIME, work_task->aio);//send msg to worker
 			break;
 		case DONE:
-//			nng_msg_free(work_task->msg);
-//			if ((rv = nng_msg_alloc(&work_task->msg, 0)) != 0) {
-//				fatal("nng_msg_alloc", rv);
-//			}
-			//TODO:add operations to handle the return values of works.
-//			if ((rv = nng_msg_append(msg, work_task_rv, sizeof(work_task_rv))) != 0) {
-//				fatal("nng_msg_append_u32", rv);
-//			}
 			nng_msg_clear(work_task->msg);
 			nng_msg_append(work_task->msg, &work_task->md, sizeof(work_task->md));
 			nng_aio_set_msg(work_task->aio, work_task->msg);
@@ -118,8 +107,8 @@ static void work_task_cb(void *arg)
 				nng_msg_free(work_task->msg);
 				fatal("nng_ctx_send", rv);
 			}
-			nng_msg_free(work_task->msg);
-			work_task->msg   = NULL;
+			//nng_msg_free(work_task->msg);
+			//work_task->msg   = NULL;
 			memset(&work_task->md,0,sizeof(mate_date_s));
 			work_task->param = NULL;
 			work_task->state = RECV;
