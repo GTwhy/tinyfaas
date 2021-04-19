@@ -10,6 +10,7 @@
 struct mate_data{
 	uint32_t data_id;
 	uint32_t data_stat;
+	char	 msg[128];
 };
 typedef struct mate_data mate_date_s;
 
