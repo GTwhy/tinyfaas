@@ -68,6 +68,15 @@ struct function_config * function_init(struct func_req_msg *msg)
 	fp->app_id = msg->app_id;
 	fp->func_id = msg->func_id;
 	fp->func_id = function_count;
+
+	void* dlp = dlopen(msg->func_path, RTLD_LAZY);
+	func_ptr_t func = dlsym(dlp, msg->func_name);
+	fp->func_ptr = func;
+	fp->dlp = dlp;
+	if (func == NULL){
+		free(fp);
+		return NULL;
+	}
 	if(strlen(msg->url) < 8) {
 		//make a new url for this function
 		if (port_base_number > 99) {
@@ -82,11 +91,6 @@ struct function_config * function_init(struct func_req_msg *msg)
 		//use the user defined url
 		memcpy(fp->url, msg->url, strlen(msg->url));
 	}
-	void* dlp = dlopen(msg->func_path, RTLD_LAZY);
-	func_ptr_t func = dlsym(dlp, msg->func_name);
-	fp->func_ptr = func;
-	fp->dlp = dlp;
-
 	printf("New function path:%s  name:%s  url:%s\n", fp->func_path, fp->func_name, fp->url);
 	return fp;
 }
@@ -140,7 +144,7 @@ int function_new(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
 	}
 	fp = function_init(req_msg);
 
-	if (fp->func_ptr == NULL){
+	if (fp == NULL){
 		printf("Can not get function\n");
 		resp_msg->state = ADD_FUNCTION_FAILURE;
 		return -3;
