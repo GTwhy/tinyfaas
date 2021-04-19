@@ -14,11 +14,6 @@ struct args{
 
 char * work_server_url;
 
-void add_func_test(void)
-{
-	work_server_url = add_new_function(NULL,0, NULL, SLEEP_PATH, SLEEP_NAME,0, 0);
-	printf("add_func_test get work_server_url : %s\n", work_server_url);
-}
 
 void request_test(void)
 {
@@ -30,10 +25,19 @@ void request_test(void)
 	free_rv(rv);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+	if (argc == 3) {
+		//User defined url
+		uint16_t port = (uint16_t)atoi(argv[2]);
+		printf("Function server url : %s:%u\n", argv[1], port);
+		work_server_url = add_new_function(argv[1],port, NULL, SLEEP_PATH, SLEEP_NAME,0, 0);
+	} else{
+		//Default url
+		printf("Tips : user defined url: %s <ip> <port>\n", argv[0]);
+		work_server_url = add_new_function(NULL,0, NULL, SLEEP_PATH, SLEEP_NAME,0, 0);
+	}
 	printf("add func\n");
-	add_func_test();
 	sleep(2);
 	request_test();
 	printf("stop func\n");
