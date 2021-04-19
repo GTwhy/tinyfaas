@@ -1,5 +1,11 @@
 #!/bin/bash
-echo "$0 <ip> <port> or just run $0 with default parameters"
+
+if [ $# -eq 1 ] && [ "$1" == "-h" ]
+then
+  echo Usage:
+  echo "$0 <ip> <port> or just run $0 with default parameters"
+  exit
+fi
 
 if ! [ -e "../build/lutf" ]
 then
