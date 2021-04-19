@@ -15,7 +15,7 @@ struct args{
 char * work_server_url;
 
 
-void request_test(void)
+void reques(void)
 {
 	struct args a;
 	a.time = 100;
@@ -39,17 +39,17 @@ int main(int argc, char **argv)
 	}
 	printf("add func\n");
 	sleep(2);
-	request_test();
+	reques();
 	printf("stop func\n");
 	stop_function(NULL,0,0,0);
 	sleep(2);
 	printf("restore func\n");
 	restore_function(NULL,0,0,0);
-	request_test();
+	reques();
 	printf("delete func\n");
 	sleep(2);
 	delete_function(NULL,0,0,0);
-	request_test();
+	reques();
 	free_url(work_server_url);
 	return 0;
 }

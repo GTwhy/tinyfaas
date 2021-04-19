@@ -37,8 +37,6 @@ nng_time   end;
 
 static int count = 1;
 
-static int send_count = 0;
-
 pthread_mutex_t th_mutex;
 
 void
@@ -92,11 +90,6 @@ work_client(void * url)
 		if ((rv = nng_sendmsg(sock, msg, 0)) != 0) {
 			fatal("nng_send", rv);
 		}
-#ifdef DEBUG
-		pthread_mutex_lock(&th_mutex);
-		printf("send count : %d\n", ++send_count);
-		pthread_mutex_unlock(&th_mutex);
-#endif
 
 		nng_msg_alloc(&recv_msg, 0);
 		if ((rv = nng_recvmsg(sock, &recv_msg, 0)) != 0) {
@@ -104,6 +97,7 @@ work_client(void * url)
 		}
 		mate_date_s * mp = (mate_date_s *)nng_msg_body(recv_msg);
 		printf("Content of recv_msg : %u  %u\n", mp->data_id, mp->data_stat);
+		nng_msg_free(recv_msg);
 #ifdef DEBUG
 		pthread_mutex_lock(&th_mutex);
 		printf("count : %d\n", count);

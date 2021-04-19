@@ -109,6 +109,7 @@ work_client(void * url)
 		}
 		mate_date_s * mp = (mate_date_s *)nng_msg_body(recv_msg);
 		printf("Content of recv_msg : %u  %u\n", mp->data_id, mp->data_stat);
+		nng_msg_free(recv_msg);
 #ifdef DEBUG
 		pthread_mutex_lock(&th_mutex);
 		printf("count : %d\n", count);
