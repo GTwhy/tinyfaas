@@ -1,1 +1,0 @@
-The current directory is used to store documents.

@@ -1,1 +1,4 @@
-The current directory is used to store demos.
+### 提示
+本目录的内容与项目本身并不直接相关，并非用于演示等用途。只是用于开发过程中的实验、测试和讨论。
+
+主程序位于/core目录，演示所用的客户端程序位于/demo目录。
