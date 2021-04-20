@@ -75,13 +75,20 @@ void * make_function_request(void * work_server_url, void * args, size_t args_si
 	return return_value;
 }
 
+/**
+ * free returned value.
+ * @param rv
+ */
 void free_rv(void * rv)
 {
 	if(rv != NULL){
 		free(rv);
 	}
 }
-
+/**
+ * free returned url
+ * @param url
+ */
 void free_url(char * url)
 {
 	if (url != NULL){
