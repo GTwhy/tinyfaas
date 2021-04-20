@@ -29,3 +29,7 @@ cd demo/hello_world/build
 ./hello_client
 ```
 3. 根据提示信息体验整个工作流程。
+4. 体验结束后，停止lutf。
+```shell script
+../../../bin/stop_worker.sh
+```
