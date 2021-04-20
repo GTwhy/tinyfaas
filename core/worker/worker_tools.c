@@ -64,12 +64,11 @@ void * make_function_request(void * work_server_url, void * args, size_t args_si
 		fatal("nng_send", rc);
 	}
 
-	nng_msg_clear(msg);
 	if ((rc = nng_recvmsg(sock, &msg, 0)) != 0) {
 		fatal("nng_recvmsg", rc);
 	}
 
-	size_t rv_size = sizeof(nng_msg_body(msg));
+	size_t rv_size = nng_msg_len(msg);
 	void * return_value = malloc(rv_size);
 	memcpy(return_value, nng_msg_body(msg), rv_size);
 	nng_msg_free(msg);

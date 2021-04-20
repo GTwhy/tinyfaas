@@ -98,7 +98,7 @@ static void work_task_cb(void *arg)
 			nng_msg_clear(work_task->msg);
 			nng_msg_append(work_task->msg, &work_task->md, sizeof(work_task->md));
 			nng_aio_set_msg(work_task->aio, work_task->msg);
-			work_task->msg = NULL;
+			//work_task->msg = NULL;
 			work_task->state = SEND;
 			nng_ctx_send(work_task->ctx, work_task->aio);
 			break;
@@ -108,7 +108,7 @@ static void work_task_cb(void *arg)
 				fatal("nng_ctx_send", rv);
 			}
 			//nng_msg_free(work_task->msg);
-			//work_task->msg   = NULL;
+			work_task->msg   = NULL;
 			memset(&work_task->md,0,sizeof(mate_date_s));
 			work_task->param = NULL;
 			work_task->state = RECV;
