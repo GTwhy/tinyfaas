@@ -12,7 +12,7 @@
 #include "work_server.h"
 #include <pthread.h>
 #include "worker_tools.h"
-#define THREAD_NUMBER 4
+#define THREAD_NUMBER 1
 #define COUNT 10000
 #define DEBUG
 #define TIME 0
