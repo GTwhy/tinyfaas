@@ -70,20 +70,17 @@ struct brick {
 
 struct brick * _br_new(struct cart *C , brick_func func, void *ud) {
 	struct brick * br;
-	if (C->nbr < DEFAULT_CART_SIZE){
-		for (int i = 0; i < DEFAULT_CART_SIZE; ++i) {
-			if (C->br[i]->state == BRICK_IDLE){
-				br = C->br[C->nbr];
-				C->nbr++;
-				br->func = func;
-				br->ud = ud;
-				br->cap = 0;
-				br->size = 0 ;
-				br->stack = NULL;
-				br->state = BRICK_READY;
-				return br;
-			}
-
+	for (int i = 0; i < DEFAULT_CART_SIZE; ++i) {
+		if (C->br[i]->state == BRICK_IDLE){
+			br = C->br[i];
+			C->nbr++;
+			br->func = func;
+			br->ud = ud;
+			br->cap = 0;
+			br->size = 0 ;
+			br->stack = NULL;
+			br->state = BRICK_READY;
+			return br;
 		}
 	}
 	br = malloc(sizeof(*br));
@@ -292,24 +289,23 @@ brick_new(brick_func func, void *ud) {
 		return br->bid;
 	}
 	int id;
-	pthread_mutex_lock(&pub_lock);
+	pthread_mutex_lock(&C->cart_mutex);
 	if (tmp_nbr >= C->cap) {
-		// 协程实例超过限定值， 扩容两倍
+		// 实例超过限定值， 扩容两倍
 		id = C->cap;
 		C->br = realloc(C->br, C->cap * 2 * sizeof(struct brick *));
 		memset(C->br + C->cap , 0 , sizeof(struct brick *) * C->cap);
-		// 将协程加入调度器
-		C->br[C->cap] = br;
+		C->br[id] = br;
 		C->cap *= 2;
 #ifdef DEBUG
 		printf("default cart size is not enough , and new cap of cart : %d\n", C->cap);
 #endif
 		++C->nbr;
 	} else {
-		for (int i=DEFAULT_CART_SIZE; i<C->cap; i++) {
+		for (int i=0; i<C->cap; i++) {
 			// 从当前已经分配的协程数开始分配 id 
 			// 这部分可以优化
-			id = (i+tmp_nbr) % C->cap;
+			id = (i+C->nbr) % C->cap;
 			if (C->br[id] == NULL) {
 				C->br[id] = br;
 				++C->nbr;
@@ -317,13 +313,14 @@ brick_new(brick_func func, void *ud) {
 			}
 		}
 	}
-	pthread_mutex_unlock(&pub_lock);
-#ifdef DEBUG
-	printf("NEW_BRICK has been made to run.   cid : %d   bid : %d \n", br->cp->cid, br->bid);
-#endif
+	pthread_mutex_unlock(&C->cart_mutex);
+
 	br->bid = id;
 	C->state = CART_RUNNING;
 	br->state = BRICK_READY;
+#ifdef DEBUG
+	printf("NEW_BRICK has been made to run.   cid : %d   bid : %d \n", br->cp->cid, br->bid);
+#endif
 	_call_labor(C);
 	return id;
 }
