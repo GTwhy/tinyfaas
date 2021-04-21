@@ -58,6 +58,15 @@ int restore_function(char * func_server_ip, uint16_t func_server_port, int app_i
 int delete_function(char * func_server_ip, uint16_t func_server_port, int app_id, int func_id);
 
 /**
+ * Low-level api used to query function state.
+ * @param func_server_url	The url of the worker's func_server, which listening the add_new_function requests.
+ * @param app_id			The id of the app which the function belongs to.
+ * @param func_id			The id of this function.
+ * @return					Operation result flag.
+ */
+int query_function(char * func_server_ip, uint16_t func_server_port, int app_id, int func_id);
+
+/**
  * free returned value.
  * @param rv
  */

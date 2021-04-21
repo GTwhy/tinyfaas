@@ -7,5 +7,6 @@ int hello_world(void * param, void * md)
 	char * str = "Hello World!\n";
 	mate_date_s * mp = (mate_date_s *)md;
 	strcpy(mp->msg, str);
+	printf("%s",str);
 	return 0;
 }

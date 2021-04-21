@@ -285,6 +285,35 @@ int function_delete(struct func_req_msg *req_msg, struct func_resp_msg * resp_ms
 	return 0;
 }
 
+/**
+ * Query function state.
+ * @param req_msg
+ * @param resp_msg
+ * @return
+ */
+int function_query(struct func_req_msg *req_msg, struct func_resp_msg * resp_msg)
+{
+	struct function_config * fcp = NULL;
+	printf("function_query : app_id:%d  func_id:%d\n\n", req_msg->app_id, req_msg->func_id);
+	req_msg_print(req_msg);
+	resp_msg->state = QUERY_FUNCTION_DEAD;
+	for (int i = 0; i < work_server_count; ++i) {
+		fcp = function_config_list[i];
+		if (fcp != NULL) {
+			if (fcp->app_id == req_msg->app_id && fcp->func_id == req_msg->func_id) {
+				if (fcp->state == FUNCTION_ACTIVE){
+					resp_msg->state = QUERY_FUNCTION_ACTIVE;
+				} else if (fcp->state == FUNCTION_STOP){
+					resp_msg->state = QUERY_FUNCTION_STOP;
+				} else{
+					resp_msg->state = QUERY_FUNCTION_DEAD;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
 
 //
 //void clean_func(uint32_t aid, uint32_t fid)
@@ -322,6 +351,9 @@ void func_cb(int sockfd)
 			break;
 		case DELETE_FUNCTION:
 			function_delete(&req_msg, &resp_msg);
+			break;
+		case QUERY_FUNCTION:
+			function_query(&req_msg, &resp_msg);
 			break;
 	}
 	pos = 0;
