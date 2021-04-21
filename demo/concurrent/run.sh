@@ -34,4 +34,5 @@ do
 done
 
 echo stop lutf-servers.
+chmod +x ../../bin/*
 ../../bin/stop_worker.sh
