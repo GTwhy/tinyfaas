@@ -18,7 +18,8 @@ int main(int argc, char **argv)
 	struct args a;
 
 	a.time = atoi(argv[1]);
-	make_function_request(work_server_url, &a, sizeof(a));
+	void * rv = make_function_request(work_server_url, &a, sizeof(a));
+	free_rv(rv);
 	printf("wake up\n");
 	return 0;
 }
